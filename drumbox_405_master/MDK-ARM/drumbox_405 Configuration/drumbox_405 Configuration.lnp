@@ -16,6 +16,7 @@
 "drumbox_405 configuration\dma.o"
 "drumbox_405 configuration\waveplayer.o"
 "drumbox_405 configuration\sinewave.o"
+"drumbox_405 configuration\audiounits.o"
 "drumbox_405 configuration\system_stm32f4xx.o"
 "drumbox_405 configuration\usbd_cdc.o"
 "drumbox_405 configuration\usbd_ioreq.o"
@@ -45,7 +46,6 @@
 "drumbox_405 configuration\stm32f4xx_hal_pcd_ex.o"
 "drumbox_405 configuration\stm32f4xx_hal_adc_ex.o"
 --library_type=microlib --strict --scatter "drumbox_405 Configuration\drumbox_405 Configuration.sct"
-
 --diag_suppress=L6329 --summary_stderr --info summarysizes --map --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
 --list "drumbox_405 Configuration.map" -o "drumbox_405 Configuration\drumbox_405 Configuration.axf"

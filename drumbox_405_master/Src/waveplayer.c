@@ -17,6 +17,8 @@ This is the Snyderphonics DrumBox synthesis code.
 #include "spi.h"
 #include "dma.h"
 
+#include "audiounits.h"
+
 #define AUDIO_BUFFER_SIZE    4  //four is the lowest number that makes sense -- 2 samples for each computed sample (L/R), and then half buffer fills
 #define HALF_BUFFER_SIZE      (AUDIO_BUFFER_SIZE/2)
 #define IC_BUFFER_SIZE 4
@@ -38,7 +40,7 @@ extern I2C_HandleTypeDef hi2c1;
 extern DMA_HandleTypeDef hdma_spi3_tx;
 extern DMA_HandleTypeDef hdma_i2s3_ext_rx;
 extern I2S_HandleTypeDef hi2s3;
-extern RNG_HandleTypeDef hrng;
+extern RNG_HandleTypeDef hrng; // noise number generator
 extern DMA_HandleTypeDef hdma_spi1_rx;
 extern DMA_HandleTypeDef hdma_spi1_tx;
 extern DMA_HandleTypeDef hdma_spi2_tx;
@@ -126,6 +128,9 @@ static __IO uint32_t AudioRemSize = 0;
 int16_t Send_Buffer[AUDIO_BUFFER_SIZE];
 int16_t Receive_Buffer[AUDIO_BUFFER_SIZE];
 int32_t myTimeout = 200;
+
+// Cycle
+tCycle sin1;
 
 //for wavetable synth
 float phasor = 0.f;
@@ -223,7 +228,10 @@ void StartAudio(void)
 { 
 
 	int16_t dummy1 = 0;
-	uint16_t dummy2 = 0;	
+	uint16_t dummy2 = 0;
+
+	// Initialize cycle.
+	tCycleInit(&sin1, SAMPLE_RATE, sinewave, SINE_TABLE_SIZE);
 
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); 
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // ADC CS pin goes high to make sure it's not selected
@@ -242,14 +250,13 @@ void StartAudio(void)
 	
 	//HAL_Delay(100);
 	//set up the scalars that set the decay times for the envelopes
-  //firstADC_Read();
 	initScalars();
 	// time to set up the I2S driver to send audio data to the codec (and retrieve input as well)	
 	myStatus = HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
   
 	readAndWriteOtherChip(dummy1, dummy2);
 	HAL_SPI_TransmitReceive_DMA(&hspi1, (uint8_t *)IC_tx, (uint8_t *)IC_rx, IC_BUFFER_SIZE);
-	//ADC_Read();
+	ADC_Read();
 
   while(1)
 	{
@@ -281,37 +288,33 @@ void StartAudio(void)
 }
 
 
-
+/*
 void updatePhase(void) {
 	phasor += phaseInc;
 
 	if (phasor >= 1.0f)
 		phasor -= 1.0f;
 }
-
+*/
 	//BEAUTIFUL SINE WAVE GENERATOR IMPORTANT
-float wavetableSynth(void)
-{
-
+/*
+float wavetableSynth(void) {
 	int intPart;
 	float fracPart, samp0, samp1, single_samp, temp;
-
-	//for (i = 0; i < BUFFER_LENGTH; i++)
-	//{
-		//linear interpolation
-		temp = phasor * VECTOR_LENGTH;
-		intPart = temp;
-		fracPart = temp - intPart;
-		samp0 = theFunction[intPart];
-		if (++intPart >= VECTOR_LENGTH)
-			intPart = 0;
-		samp1 = theFunction[intPart];
-		single_samp = (samp0 + (samp1 - samp0) * fracPart) * INV_TWO_TO_15; //scale amplitude down
-
-		updatePhase();
-		return single_samp;
-	//}
+	
+	temp = phasor * SINE_TABLE_SIZE;
+	intPart = temp;
+	fracPart = temp - intPart;
+	samp0 = sinewave[intPart];
+	if (++intPart >= SINE_TABLE_SIZE) intPart = 0;
+	samp1 = sinewave[intPart];
+	single_samp = (samp0 + (samp1 - samp0) * fracPart);//* INV_TWO_TO_15; //scale amplitude down
+	
+	sin1.step(&sin1);
+	return single_samp;
 }
+*/
+
 
 float testTemp;
 int whichknob = 0;
@@ -331,7 +334,7 @@ void fillBufferWithInputProcess(uint8_t buffer_offset)
 						{
 							//testTemp = myProcess(Receive_Buffer[i] * INV_TWO_TO_15) * TWO_TO_15;
 							//int16_t OtherChip = readAndWriteOtherChip(Receive_Buffer[i], OtherICBufferIndexNum);
-							current_sample = testTemp;
+							current_sample = myProcess(Receive_Buffer[i] * INV_TWO_TO_15) * TWO_TO_15;
 							//OtherICBufferIndexNum++;
 						}
 						Send_Buffer[i] = current_sample;
@@ -346,7 +349,7 @@ void fillBufferWithInputProcess(uint8_t buffer_offset)
 						{
  							//testTemp = myProcess((float) (Receive_Buffer[HALF_BUFFER_SIZE + i] * INV_TWO_TO_15)) * TWO_TO_15;
 							//int16_t OtherChip = readAndWriteOtherChip(Receive_Buffer[HALF_BUFFER_SIZE + i], OtherICBufferIndexNum);
-							current_sample = testTemp;
+							current_sample = myProcess((float) (Receive_Buffer[HALF_BUFFER_SIZE + i] * INV_TWO_TO_15)) * TWO_TO_15;
 							//OtherICBufferIndexNum++;
 						}
 						Send_Buffer[HALF_BUFFER_SIZE + i] = current_sample;
@@ -386,11 +389,15 @@ float myProcess(float AudioIn)
 	envGain[0] = adc_env_detector(AudioIn, 0);
   envGain[1] = adc_env_detector(AudioIn, 1);
 	
+	
 	sample = ((KSprocess(AudioIn) * 0.55f) + (AudioIn * 0.6f));
-	sample += (0.33f * ((wavetableSynth() * envGain[0]) + (((pinkNoise() * 1.0f) + whiteNoise() * .13f)* envGain[1])));
+	sample += (0.33f * ((sin1.step(&sin1) * envGain[0]) + (((pinkNoise() * 1.0f) + whiteNoise() * .13f)* envGain[1])));
+  sample = highpass3(FastTanh2Like4Term(sample * gainBoost));
+	
+	
+
 	//sample += (0.8f * wavetableSynth());
 	//sample = pinkNoise() * 0.1f;
-  sample = highpass3(FastTanh2Like4Term(sample * gainBoost));
 	//sample = highpass(shaper(sample));
 
 	//update Paramesters
@@ -1040,16 +1047,16 @@ void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
 { 
 	//pullUpOtherChipCS();	
 	
-	//fillBufferWithInputProcess(1);
-	//myStatus = HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
+	fillBufferWithInputProcess(1);
+	myStatus = HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
 }
 
 void HAL_I2S_TxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
 {
   //pullUpOtherChipCS();	  
 		
-	//fillBufferWithInputProcess(0);
-	//myStatus = HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
+	fillBufferWithInputProcess(0);
+	myStatus = HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
 }
 
 void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s)

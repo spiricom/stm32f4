@@ -1,4 +1,5 @@
 drumbox_405 configuration\sinewave.o: ..\Src\sinewave.c
+drumbox_405 configuration\sinewave.o: ..\Inc\main.h
 drumbox_405 configuration\sinewave.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal.h
 drumbox_405 configuration\sinewave.o: ..\Inc\stm32f4xx_hal_conf.h
 drumbox_405 configuration\sinewave.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_rcc.h

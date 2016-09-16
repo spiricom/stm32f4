@@ -46,3 +46,4 @@ drumbox_405 configuration\waveplayer.o: ..\Inc\rng.h
 drumbox_405 configuration\waveplayer.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 drumbox_405 configuration\waveplayer.o: ..\Inc\main.h
 drumbox_405 configuration\waveplayer.o: ..\Inc\spi.h
+drumbox_405 configuration\waveplayer.o: ..\Inc\audiounits.h
