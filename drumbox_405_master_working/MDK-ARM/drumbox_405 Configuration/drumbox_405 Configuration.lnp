@@ -17,7 +17,7 @@
 "drumbox_405 configuration\adc.o"
 "drumbox_405 configuration\dma.o"
 "drumbox_405 configuration\waveplayer.o"
-"drumbox_405 configuration\sinewave.o"
+"drumbox_405 configuration\audiounits.o"
 "drumbox_405 configuration\system_stm32f4xx.o"
 "drumbox_405 configuration\usbd_cdc.o"
 "drumbox_405 configuration\usbd_ioreq.o"

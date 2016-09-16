@@ -478,16 +478,6 @@
               <FilePath>..\Inc\codec.h</FilePath>
             </File>
             <File>
-              <FileName>sinewave.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Src\sinewave.c</FilePath>
-            </File>
-            <File>
-              <FileName>sinewave.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\Inc\sinewave.h</FilePath>
-            </File>
-            <File>
               <FileName>main.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Inc\main.h</FilePath>

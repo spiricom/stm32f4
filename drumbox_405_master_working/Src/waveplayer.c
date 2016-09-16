@@ -4,8 +4,7 @@ This is the Snyderphonics DrumBox synthesis code.
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
-#include "waveplayer.h"
-#include "sinewave.h"
+
 #include "i2s.h"
 #include "i2c.h"
 #include "dma.h"
@@ -13,8 +12,12 @@ This is the Snyderphonics DrumBox synthesis code.
 #include "rng.h"
 #include "stm32f4xx_hal_i2s_ex.h"
 #include "math.h"
-#include "main.h"
 #include "spi.h"
+
+#include "main.h"
+#include "waveplayer.h"
+#include "wavetables.h"
+#include "audiounits.h"
 
 #define AUDIO_BUFFER_SIZE             256 //four is the lowest number that makes sense -- 2 samples for each computed sample (L/R), and then half buffer fills
 #define HALF_BUFFER_SIZE      (AUDIO_BUFFER_SIZE/2)
@@ -25,6 +28,10 @@ This is the Snyderphonics DrumBox synthesis code.
 #define ADC_FEEDBACK 0
 #define ADC_FREQ 1
 #define ADC_DELAY 2
+
+// Sine 
+tCycle sin1; 
+
 float mParamInc[NUM_PARAMS];
 float destParamValue[NUM_PARAMS];
 float currParamValue[NUM_PARAMS];
@@ -136,7 +143,6 @@ float READ_BYTES_AS_FLOAT(uint8_t byteNum);
 void setDelay(float);
 void updatePhase(void);
 void changePhaseInc(float);
-float wavetableSynth(void);
 float myProcess(float);
 float pinkNoise(void);
 float whiteNoise(void);
@@ -166,6 +172,10 @@ void changePhaseInc(float freq)
 void StartAudio(void)
 { 
 	HAL_Delay(100);
+	
+	// initialize audio 
+	tCycleInit(&sin1, SAMPLE_RATE, sinewave, SINE_TABLE_SIZE);
+	
 	//now to send all the necessary messages to the codec
 	AudioCodec_init();
 	HAL_Delay(100);
@@ -194,14 +204,14 @@ float wavetableSynth(void)
 	//for (i = 0; i < BUFFER_LENGTH; i++)
 	//{
 		//linear interpolation
-		temp = phasor * VECTOR_LENGTH;
+		temp = phasor * SINE_TABLE_SIZE;
 		intPart = temp;
 		fracPart = temp - intPart;
-		samp0 = theFunction[intPart];
-		if (++intPart >= VECTOR_LENGTH)
+		samp0 = sinewave[intPart];
+		if (++intPart >= SINE_TABLE_SIZE)
 			intPart = 0;
-		samp1 = theFunction[intPart];
-		single_samp = (samp0 + (samp1 - samp0) * fracPart) * INV_TWO_TO_15; //scale amplitude down
+		samp1 = sinewave[intPart];
+		single_samp = (samp0 + (samp1 - samp0) * fracPart); //scale amplitude down
 
 		updatePhase();
 		return single_samp;
@@ -257,7 +267,8 @@ float myProcess(float AudioIn)
 	scalar[1] =( powf( 0.5f, (1.0f/(((float)ADC_values[5]) * INV_TWO_TO_12 * (float)SAMPLE_RATE))));
 	
 	//set frequency of sine and delay
-	phaseInc = (MtoF((currParamValue[ADC_FREQ]) * 109.0f + 25.f)) * INV_SAMPLE_RATE;
+	//sin1.freq(&sin1, MtoF((currParamValue[ADC_FREQ]) * 109.0f + 25.f));
+	phaseInc = MtoF((currParamValue[ADC_FREQ]) * 109.0f + 25.f) * INV_TWO_TO_15;
 	setDelay(currParamValue[ADC_DELAY]);
 	
 	AudioGateVal = ((float)ADC_values[3]) * INV_TWO_TO_12 * 0.2f;
@@ -269,10 +280,13 @@ float myProcess(float AudioIn)
 	envGain[0] = adc_env_detector(AudioIn, 0);
   envGain[1] = adc_env_detector(AudioIn, 1);
 	
+
 	sample = ((KSprocess(AudioIn) * 0.7f) + AudioIn * 0.8f);
 	sample += (0.8f * ((wavetableSynth() * envGain[0] * 0.8f) + (whiteNoise() * envGain[1] * 0.18f)));
   sample = highpass(FastTanh2Like4Term(sample * gainBoost));
 
+	
+	//sample = (sin1.step(&sin1) * envGain[0] * 0.8f);
 	//update Parameters
 	for (m = 0; m < NUM_PARAMS; m++)
 	{

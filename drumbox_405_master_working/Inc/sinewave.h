@@ -1,6 +1,6 @@
 
 #include "stm32f4xx_hal.h"
 
-#define VECTOR_LENGTH 2048
+#define SINE_TABLE_SIZE 2048
 
-extern const int16_t theFunction[VECTOR_LENGTH];
+extern const int16_t sinewave[SINE_TABLE_SIZE];

@@ -852,12 +852,16 @@ ARM Macro Assembler    Page 14
   432 0000001C                 END
               00000000 
               00000000 
-Command Line: --debug --xref --cpu=Cortex-M4.fp --apcs=interwork --depend="drum
-box_405 configuration\startup_stm32f405xx.d" -o"drumbox_405 configuration\start
-up_stm32f405xx.o" -IC:\Keil_v5\ARM\RV31\INC -IC:\Keil_v5\ARM\PACK\ARM\CMSIS\4.1
-.1\CMSIS\Include --predefine="__MICROLIB SETA 1" --list=startup_stm32f405xx.lst
- ..\Drivers\CMSIS\Device\ST\STM32F4xx\Source\Templates\arm\startup_stm32f405xx.
-s
+Command Line: --debug --xref --diag_suppress=9931 --cpu=Cortex-M4.fp --apcs=int
+erwork --depend="drumbox_405 configuration\startup_stm32f405xx.d" -o"drumbox_40
+5 configuration\startup_stm32f405xx.o" -IC:\Documents\en.stm32cubef4\STM32Cube_
+FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_master_
+working\MDK-ARM\RTE -IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.0.0-Beta4\CMSIS\Include -
+IC:\Keil_v5\ARM\PACK\Keil\STM32F4xx_DFP\2.9.0\Drivers\CMSIS\Device\ST\STM32F4xx
+\Include --predefine="__MICROLIB SETA 1" --predefine="__UVISION_VERSION SETA 52
+0" --predefine="_RTE_ SETA 1" --predefine="STM32F405xx SETA 1" --list=startup_s
+tm32f405xx.lst ..\Drivers\CMSIS\Device\ST\STM32F4xx\Source\Templates\arm\startu
+p_stm32f405xx.s
 
 
 
@@ -2233,4 +2237,4 @@ Symbol: __main
 \arm\startup_stm32f405xx.s
 Comment: __main used once
 2 symbols
-439 symbols in table
+442 symbols in table
