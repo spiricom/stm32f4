@@ -31,6 +31,7 @@ This is the Snyderphonics DrumBox synthesis code.
 
 // Sine 
 tCycle sin1; 
+tNoise noise1;
 
 float mParamInc[NUM_PARAMS];
 float destParamValue[NUM_PARAMS];
@@ -58,7 +59,7 @@ float newDelay = 0.0f;
 float newFeedback = 0.0f;
 float newDecay = 0.0f;
 float newDecaySine, newDecayNoise, newCF_DelaySine, newCF_NoiseSine;
-float gainBoost = 3.0f;
+float gainBoost = 0.9f;
 
 int N = 0;
 float noiseGain = 1.f;
@@ -116,7 +117,6 @@ uint8_t ADC_in[2];
 
 /* Private function prototypes -----------------------------------------------*/
 // PROTOTYPES
-float wavetableSynth(void);
 float envelope(float, float, float);
 float process(void);
 void  initWaveguide(void);
@@ -142,10 +142,8 @@ void WRITE_FLOAT_AS_BYTES(uint8_t byteNum, float data);
 float READ_BYTES_AS_FLOAT(uint8_t byteNum);
 void setDelay(float);
 void updatePhase(void);
-void changePhaseInc(float);
 float myProcess(float);
 float pinkNoise(void);
-float whiteNoise(void);
 void 	initScalars(void);
 uint8_t thresholdCheck(uint8_t raw_num);
 float interpolateFeedback(float raw_data);
@@ -164,10 +162,14 @@ void Error_Handler(void)
   }
 }
 
-void changePhaseInc(float freq)
-{
-	phaseInc = (freq / SAMPLE_RATE);
+// Returns random floating point value [0.0,1.0)
+float randomNumber(void) {
+	uint32_t rand;
+	HAL_RNG_GenerateRandomNumber(&hrng, &rand);
+	float num = (((float)(rand >> 16))- 32768.f) * INV_TWO_TO_15;
+	return num;
 }
+
 
 void StartAudio(void)
 { 
@@ -175,6 +177,8 @@ void StartAudio(void)
 	
 	// initialize audio 
 	tCycleInit(&sin1, SAMPLE_RATE, sinewave, SINE_TABLE_SIZE);
+	tNoiseInit(&noise1, SAMPLE_RATE, &randomNumber, NoiseTypePink);
+	
 	
 	//now to send all the necessary messages to the codec
 	AudioCodec_init();
@@ -183,39 +187,6 @@ void StartAudio(void)
 	initScalars();
 	// time to set up the I2S driver to send audio data to the codec (and retrieve input as well)	
 	myStatus = HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
-}
-
-
-
-void updatePhase(void) {
-	phasor += phaseInc;
-
-	if (phasor >= 1.0f)
-		phasor -= 1.0f;
-}
-
-	//BEAUTIFUL SINE WAVE GENERATOR IMPORTANT
-float wavetableSynth(void)
-{
-
-	int intPart;
-	float fracPart, samp0, samp1, single_samp, temp;
-
-	//for (i = 0; i < BUFFER_LENGTH; i++)
-	//{
-		//linear interpolation
-		temp = phasor * SINE_TABLE_SIZE;
-		intPart = temp;
-		fracPart = temp - intPart;
-		samp0 = sinewave[intPart];
-		if (++intPart >= SINE_TABLE_SIZE)
-			intPart = 0;
-		samp1 = sinewave[intPart];
-		single_samp = (samp0 + (samp1 - samp0) * fracPart); //scale amplitude down
-
-		updatePhase();
-		return single_samp;
-	//}
 }
 
 float testTemp;
@@ -258,87 +229,63 @@ void fillBufferWithInputProcess(uint8_t buffer_offset)
 			}
 }
 
+int m = 0;
 float myProcess(float AudioIn)
 {
 	float sample;
   float envGain[2];
-	int m = 0;
+	
 	scalar[0] =( powf( 0.5f, (1.0f/(((float)ADC_values[4]) * INV_TWO_TO_12 * (float)SAMPLE_RATE))));
 	scalar[1] =( powf( 0.5f, (1.0f/(((float)ADC_values[5]) * INV_TWO_TO_12 * (float)SAMPLE_RATE))));
 	
 	//set frequency of sine and delay
-	//sin1.freq(&sin1, MtoF((currParamValue[ADC_FREQ]) * 109.0f + 25.f));
-	phaseInc = MtoF((currParamValue[ADC_FREQ]) * 109.0f + 25.f) * INV_TWO_TO_15;
+	sin1.freq(&sin1, MtoF((currParamValue[ADC_FREQ]) * 109.0f + 25.f));
+	//phaseInc = MtoF((currParamValue[ADC_FREQ]) * 109.0f + 25.f) * INV_TWO_TO_15;
 	setDelay(currParamValue[ADC_DELAY]);
 	
-	AudioGateVal = ((float)ADC_values[3]) * INV_TWO_TO_12 * 0.2f;
-	env_detector_thresh = AudioGateVal;
-	if (AudioIn < AudioGateVal)
-	{
-		AudioIn = 0;
-	}
-	envGain[0] = adc_env_detector(AudioIn, 0);
-  envGain[1] = adc_env_detector(AudioIn, 1);
+	env_detector_thresh = ((float)ADC_values[3]) * INV_TWO_TO_12 * 0.2f;
+	float clippedSample;
+	if (AudioIn < env_detector_thresh) 
+		clippedSample = 0;
+	else 
+		clippedSample = AudioIn;
+	
+	envGain[0] = adc_env_detector(clippedSample, 0);
+  envGain[1] = adc_env_detector(clippedSample, 1);
 	
 
 	sample = ((KSprocess(AudioIn) * 0.7f) + AudioIn * 0.8f);
-	sample += (0.8f * ((wavetableSynth() * envGain[0] * 0.8f) + (whiteNoise() * envGain[1] * 0.18f)));
+	sample += (0.8f * ((sin1.step(&sin1) * envGain[0] * 0.8f) + (noise1.step(&noise1) * envGain[1] * 0.18f)));
   sample = highpass(FastTanh2Like4Term(sample * gainBoost));
 
-	
-	//sample = (sin1.step(&sin1) * envGain[0] * 0.8f);
 	//update Parameters
-	for (m = 0; m < NUM_PARAMS; m++)
+	if ((currParamValue[m] >= destParamValue[m]) && (dirParamInc[m] == 1)) 
 	{
-		
-		if ((currParamValue[m] >= destParamValue[m]) && (dirParamInc[m] == 1)) 
-		{
-			mParamInc[m] = 0.0f;
-			currParamValue[m] = destParamValue[m];
-		}
-		else if ((currParamValue[m] <= destParamValue[m]) && (dirParamInc[m] == -1))
-		{
-			mParamInc[m] = 0.0f;
-			currParamValue[m] = destParamValue[m];
-		}
-		else if (dirParamInc[m] == 0)
-		{
-			mParamInc[m] = 0.0f;
-			currParamValue[m] = destParamValue[m];
-		}
-		else 
-		{
-			currParamValue[m] += mParamInc[m];
-		}
-
+		mParamInc[m] = 0.0f;
+		currParamValue[m] = destParamValue[m];
 	}
+	else if ((currParamValue[m] <= destParamValue[m]) && (dirParamInc[m] == -1))
+	{
+		mParamInc[m] = 0.0f;
+		currParamValue[m] = destParamValue[m];
+	}
+	else if (dirParamInc[m] == 0)
+	{
+		mParamInc[m] = 0.0f;
+		currParamValue[m] = destParamValue[m];
+	}
+	else 
+	{
+		currParamValue[m] += mParamInc[m];
+	}
+	m++;
+	if (m >= NUM_PARAMS) m = 0;
+
+
 		
   return sample;
 }
 
-float whiteNoise (void)
-{
-	HAL_RNG_GenerateRandomNumber(&hrng, &myRandomNumber);
-	float white = (((float)(myRandomNumber >> 16))- 32768.f) / 32768.f;
-	return white;
-}
-
-
-float pinkb0;
-float pinkb1;
-float pinkb2;
-float pinkNoise (void)
-{
-	//pink noise ///
-	
-	  float tmp;
-	  float startWhite = whiteNoise();
-		pinkb0 = 0.99765f * pinkb0 + startWhite * 0.0990460f;
-		pinkb1 = 0.96300f * pinkb1 + startWhite * 0.2965164f;
-		pinkb2 = 0.57000f * pinkb2 + startWhite * 1.0526913f;
-		tmp = pinkb0 + pinkb1 + pinkb2 + startWhite * 0.1848f;
-	  return tmp * 0.05f;
-}
 
 float MtoF(float midi)
 {
