@@ -18,25 +18,31 @@ This is the Snyderphonics DrumBox synthesis code.
 #include "waveplayer.h"
 #include "wavetables.h"
 #include "audiounits.h"
+#include "utilities.h" // three of i and one of you, what am i?
 
-#define AUDIO_BUFFER_SIZE             256 //four is the lowest number that makes sense -- 2 samples for each computed sample (L/R), and then half buffer fills
+#define AUDIO_BUFFER_SIZE             128 //four is the lowest number that makes sense -- 2 samples for each computed sample (L/R), and then half buffer fills
 #define HALF_BUFFER_SIZE      (AUDIO_BUFFER_SIZE/2)
 
-#define NUM_PARAMS 3
-//#define ADC_DECAY_SINE 3
-//#define ADC_DECAY_NOISE 4
+#define NUM_PARAMS_SMOOTH 3
 #define ADC_FEEDBACK 0
 #define ADC_FREQ 1
 #define ADC_DELAY 2
 
 // Sine 
 tCycle sin1; 
+
+// Noise 
 tNoise noise1;
 
-float mParamInc[NUM_PARAMS];
-float destParamValue[NUM_PARAMS];
-float currParamValue[NUM_PARAMS];
-int8_t dirParamInc[NUM_PARAMS];
+// Ramp
+tRamp rampFeedback;
+tRamp rampSineFreq;
+tRamp rampDelayFreq;
+
+float mParamInc[NUM_PARAMS_SMOOTH];
+float destParamValue[NUM_PARAMS_SMOOTH];
+float currParamValue[NUM_PARAMS_SMOOTH];
+int8_t dirParamInc[NUM_PARAMS_SMOOTH];
 
 float delayed_samples[DELAY_BUF_LENGTH];
 
@@ -59,7 +65,7 @@ float newDelay = 0.0f;
 float newFeedback = 0.0f;
 float newDecay = 0.0f;
 float newDecaySine, newDecayNoise, newCF_DelaySine, newCF_NoiseSine;
-float gainBoost = 0.9f;
+float gainBoost = 0.3f;
 
 int N = 0;
 float noiseGain = 1.f;
@@ -72,7 +78,6 @@ float m_input1_f2 = 0.f;
 float	m_output0_f2 = 0.f;
 float	lpOut_f2 = 0.f;
 
-float AudioGateVal = 0.05f;
 int16_t computed_samples[HALF_BUFFER_SIZE];
 
 #define FEEDBACK_LOOKUP 5
@@ -81,33 +86,9 @@ float FeedbackLookup[FEEDBACK_LOOKUP] = { 0.0f, 0.8f, .999f, 1.0f, 1.001f };
 //float DelayLookup[DELAY_LOOKUP] = { 16000.f, 1850.f, 180.f, 40.f };
 float DelayLookup[DELAY_LOOKUP] = { 50.f, 180.f, 1400.f, 16300.f };
 
-uint32_t myRandomNumber = 0;
-
-HAL_StatusTypeDef myStatus = HAL_ERROR;
-		
-/* LED State (Toggle or OFF)*/
-__IO uint32_t LEDsState;
-
-extern __IO uint32_t RepeatState, PauseResumeStatus, PressCount;
-
-/* Audio Play Start variable. 
-   Defined as external in main.c*/
-__IO uint32_t AudioPlayStart = 0;
-
-
-/* Audio wave remaining data length to be played */
-static __IO uint32_t AudioRemSize = 0;
-
 /* Ping-Pong buffer used for audio play */
 int16_t Send_Buffer[AUDIO_BUFFER_SIZE];
 int16_t Receive_Buffer[AUDIO_BUFFER_SIZE];
-int32_t myTimeout = 200;
-
-//for wavetable synth
-float phasor = 0.f;
-#define INIT_FREQ 110.f
-
-float phaseInc = (INIT_FREQ / SAMPLE_RATE);
 
 float scalar[3];
 uint8_t ADC_out[2];
@@ -178,7 +159,9 @@ void StartAudio(void)
 	// initialize audio 
 	tCycleInit(&sin1, SAMPLE_RATE, sinewave, SINE_TABLE_SIZE);
 	tNoiseInit(&noise1, SAMPLE_RATE, &randomNumber, NoiseTypePink);
-	
+	tRampInit(&rampFeedback, SAMPLE_RATE, 10.0f, 1);
+	tRampInit(&rampSineFreq, SAMPLE_RATE, 10.0f, 1);
+	tRampInit(&rampDelayFreq, SAMPLE_RATE, 10.0f, 1);
 	
 	//now to send all the necessary messages to the codec
 	AudioCodec_init();
@@ -186,7 +169,7 @@ void StartAudio(void)
 	//set up the scalars that set the decay times for the envelopes
 	initScalars();
 	// time to set up the I2S driver to send audio data to the codec (and retrieve input as well)	
-	myStatus = HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
+	HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
 }
 
 float testTemp;
@@ -240,25 +223,28 @@ float myProcess(float AudioIn)
 	
 	//set frequency of sine and delay
 	sin1.freq(&sin1, MtoF((currParamValue[ADC_FREQ]) * 109.0f + 25.f));
-	//phaseInc = MtoF((currParamValue[ADC_FREQ]) * 109.0f + 25.f) * INV_TWO_TO_15;
 	setDelay(currParamValue[ADC_DELAY]);
 	
 	env_detector_thresh = ((float)ADC_values[3]) * INV_TWO_TO_12 * 0.2f;
 	float clippedSample;
 	if (AudioIn < env_detector_thresh) 
-		clippedSample = 0;
+		clippedSample = 0.f;
 	else 
 		clippedSample = AudioIn;
 	
 	envGain[0] = adc_env_detector(clippedSample, 0);
-  envGain[1] = adc_env_detector(clippedSample, 1);
+	envGain[1] = adc_env_detector(clippedSample, 1);
 	
-
+	
 	sample = ((KSprocess(AudioIn) * 0.7f) + AudioIn * 0.8f);
-	sample += (0.8f * ((sin1.step(&sin1) * envGain[0] * 0.8f) + (noise1.step(&noise1) * envGain[1] * 0.18f)));
+	sample += (0.8f * ((sin1.step(&sin1) * envGain[0] * 0.8f) + (noise1.step(&noise1) * envGain[1] * 0.5f)));
   sample = highpass(FastTanh2Like4Term(sample * gainBoost));
 
 	//update Parameters
+	currParamValue[0] = rampFeedback.step(&rampFeedback);
+	currParamValue[1] = rampSineFreq.step(&rampSineFreq);
+	currParamValue[2] = rampDelayFreq.step(&rampDelayFreq);
+	/*
 	if ((currParamValue[m] >= destParamValue[m]) && (dirParamInc[m] == 1)) 
 	{
 		mParamInc[m] = 0.0f;
@@ -279,10 +265,8 @@ float myProcess(float AudioIn)
 		currParamValue[m] += mParamInc[m];
 	}
 	m++;
-	if (m >= NUM_PARAMS) m = 0;
-
-
-		
+	if (m >= NUM_PARAMS_SMOOTH) m = 0;
+	*/
   return sample;
 }
 
@@ -298,7 +282,7 @@ void initScalars(void)
 	scalar[1] = ( powf( 0.5f, (1.0f/(0.1f * (float)SAMPLE_RATE))));
 	scalar[2] = ( powf( 0.5f, (1.0f/(0.2f * (float)SAMPLE_RATE))));
 	uint8_t i = 0;
-	for (i = 0; i < NUM_PARAMS; i++)
+	for (i = 0; i < NUM_PARAMS_SMOOTH; i++)
 	{
 		dirParamInc[i] = 0.0f;
 	}
@@ -320,69 +304,16 @@ float tanh2(float x)
 
 void getADC_Raw(void)
 {
-	
-	if (thresholdCheck(2))
-	{
 		newFeedback = interpolateFeedback(ADC_values[2]);
-		if (newFeedback != destParamValue[ADC_FEEDBACK])
-		{
-			setRamp(ADC_FEEDBACK, currParamValue[ADC_FEEDBACK], newFeedback, 50.f);
-		}
-	}
-	ADC_LastRead[2] = ADC_values[2];
-	
-	if (thresholdCheck(1))
-	{
-		newFreq =  (ADC_values[1] * INV_TWO_TO_12) * (ADC_values[0] * INV_TWO_TO_12); 
-		if (newFreq != destParamValue[ADC_FREQ])
-		{
-			setRamp(ADC_FREQ, currParamValue[ADC_FREQ], newFreq, 90.f);
-		}
-	}
-	ADC_LastRead[1] = ADC_values[1];
+		rampFeedback.setDest(&rampFeedback,newFeedback);
 
-	if (thresholdCheck(0))
-	{
+		newFreq =  (ADC_values[1] * INV_TWO_TO_12) /* * (ADC_values[0] * INV_TWO_TO_12)*/; 
+		rampSineFreq.setDest(&rampSineFreq,newFreq);
+
 		newDelay = interpolateDelay((4096 - ADC_values[0]));
-		if (newDelay != destParamValue[ADC_DELAY])
-		{
-			setRamp(ADC_DELAY, currParamValue[ADC_DELAY], newDelay, 90.f);
-		}
-	}
-	ADC_LastRead[0] = ADC_values[0];
+		rampDelayFreq.setDest(&rampDelayFreq,newDelay);
 }
 
-/*
-param_index is identification and array index for parameter requiring ramping
-(ADC_FEEDBACK 0, ADC_FREQ 1, ADC_DELAY 2)
-old_value is current/just changed value of input
-new_value is new value of input
-ms_ramp is milliseconds desired for ramping for specific parameter
-*/
-void setRamp(uint8_t param_index, float old_value, float new_value, float ms_ramp) 
-{
-	mParamInc[param_index] = (new_value - old_value)/ms_ramp * INV_SR_MS;
-	if (mParamInc[param_index] < 0.0f)
-		dirParamInc[param_index] = -1;
-	else if (mParamInc[param_index] == 0.0f)
-		dirParamInc[param_index] = 0;
-	else 
-		dirParamInc[param_index] = 1;
-	destParamValue[param_index] = new_value;
-}
-
-#define RAW_THRESHOLD 0.5f
-
-//ADC_Raw thresholding!
-uint8_t thresholdCheck(uint8_t raw_num)
-{
-	float diff = (float)(ADC_values[raw_num] - ADC_LastRead[raw_num]);
-	if (diff >= RAW_THRESHOLD || diff <= -RAW_THRESHOLD)
-	{
-		return 1;
-	}
-	return 0;
-}
 
 #define ADC_DECAY_SINE 0
 #define ADC_DECAY_NOISE 1
@@ -413,7 +344,7 @@ float y2 = 0.0f;
 float highpass2(float x2)
 {
 	
-y2 = x2 - xs2 + R2 * ys2;
+  y2 = x2 - xs2 + R2 * ys2;
 	ys2 = y2;
 	xs2 = x2;
 	return y2;
