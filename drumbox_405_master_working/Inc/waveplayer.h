@@ -71,8 +71,8 @@ typedef enum
 
 /* Exported macro ------------------------------------------------------------*/
 /* Exported functions ------------------------------------------------------- */
-void  StartAudio(void);
-void  changePhaseInc(float freq);
+void  audioInit(void);
+
 #endif /* __WAVEPLAYER_H */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

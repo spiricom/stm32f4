@@ -76,6 +76,7 @@ long i = 0;
 uint8_t counter = 0;
 uint16_t fullword = 0;
 uint8_t CAT_LED[CAT_BUFFERSIZE];
+
 uint16_t ADC_values[NUMCHANNELS];
 uint16_t ADC_LastRead[NUMCHANNELS];
 uint16_t knobsendbyte;
@@ -87,7 +88,6 @@ void Write7Seg(uint8_t value);
 
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -119,7 +119,7 @@ int main(void)
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET); // CAT4016 Latch pin should start low
 
 	
-  StartAudio();
+  audioInit();
 	
   /* USER CODE END 2 */
 

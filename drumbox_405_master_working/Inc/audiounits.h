@@ -1,5 +1,17 @@
 #include "stdint.h"
 
+#define VERY_SMALL_FLOAT 1.0e-38f
+
+/* Envelope Follower */
+typedef struct _tEnvelopeFollower {
+	float y, a_thresh, d_coeff; 
+	int(*attackThresh)(struct _tEnvelopeFollower *self, float attackThresh);
+	int(*decayCoeff)(struct _tEnvelopeFollower *self, float decayCoeff);
+	float(*tick)(struct _tEnvelopeFollower *self, float x);
+} tEnvelopeFollower; 
+
+int tEnvelopeFollowerInit(tEnvelopeFollower *ef, float attackThreshold, float decayCoeff);
+
 /* Phasor [0.0, 1.0) */
 typedef struct _tPhasor {
 	float phase; 
@@ -82,4 +94,14 @@ typedef struct _tNoise {
 } tNoise;
 
 int tNoiseInit(tNoise *c, float sr, float (*randomNumberGenerator)(), NoiseType type);
+
+typedef struct _tHighpass {
+	float inv_sr;
+	float xs, ys, R;
+	float cutoff;
+	int(*freq)(struct _tHighpass *self, float x);
+	float(*tick)(struct _tHighpass *self, float x);
+} tHighpass;
+
+int tHighpassInit(tHighpass *hp, float sr, float freq);
 

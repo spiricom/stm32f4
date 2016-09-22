@@ -30,6 +30,80 @@ int tPhasorInit(tPhasor *p, float sr) {
 	return 0; 
 }
 
+// Envelope detect
+float tEnvelopeFollowerTick(tEnvelopeFollower *ef, float x) {
+
+	if(x < 0.0f ) x = -x;  /* Absolute value. */
+
+	if ((x >= ef->y) && (x > ef->a_thresh))
+	{
+		 /* When we hit a peak, ride the peak to the top. */
+		ef->y = x;
+	}
+	else
+	{
+		 /* Exponential decay of output when signal is low. */
+		 ef->y *= ef->d_coeff;
+		 /*
+		 ** When output gets close to 0.0, set output to 0.0 to prevent FP underflow
+		 ** which can cause a severe performance degradation due to a flood
+		 ** of interrupts.
+		 */
+		 if( ef->y < VERY_SMALL_FLOAT) { 
+			 ef->y = 0.0f;
+
+		 }
+	}
+	
+	return ef->y;
+	
+}
+
+int tDecayCoeff(tEnvelopeFollower *ef, float decayCoeff) {
+	return ef->d_coeff = decayCoeff;
+}
+
+int tAttackThresh(tEnvelopeFollower *ef, float attackThresh) {
+	return ef->a_thresh = attackThresh;
+}
+
+int tEnvelopeFollowerInit(tEnvelopeFollower *ef, float attackThreshold, float decayCoeff) {
+	ef->y = 0.0f;
+	ef->a_thresh = attackThreshold;
+	ef->d_coeff = decayCoeff;
+	ef->decayCoeff = &tDecayCoeff;
+	ef->attackThresh = &tAttackThresh;
+	ef->tick = &tEnvelopeFollowerTick;
+	return 0;
+}
+
+// Highpass 
+int tHighpassFreq(tHighpass *hp, float freq) {
+	
+	hp->R = (1.0f-((freq * 2.0f * 3.14f)*hp->inv_sr));
+	
+	return 0;
+}
+
+// From JOS DC Blocker
+float tHighpassTick(tHighpass *hp, float x) {
+	
+	hp->ys = x - hp->xs + hp->R * hp->ys;
+	hp->xs = x;
+	return hp->ys;
+}
+
+int tHighpassInit(tHighpass *hp, float sr, float freq) {
+	
+	hp->inv_sr = 1.0f/sr;
+	hp->R = (1.0f-((freq * 2.0f * 3.14f)*hp->inv_sr));
+	hp->ys = 0.0f;
+	hp->xs = 0.0f;
+	hp->tick = &tHighpassTick;
+	
+	return 0;
+}
+
 /* Cycle */
 static int cFreq(tCycle *c, float freq) {	
 	

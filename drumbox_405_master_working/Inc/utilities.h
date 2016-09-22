@@ -1,9 +1,12 @@
 #include "stdint.h"
 
 typedef enum ControlParameterType {
-	ControlParameterFeedback = 0,
-	ControlParamaterFrequency,
-	ControlParamaterDelay,
+	ControlParameterDelay = 0,
+	ControlParameterFrequency,
+	ControlParameterFeedback,
+	ControlParameterThreshold,
+	ControlParameterSineDecay,
+	ControlParameterNoiseDecay,
 	ControlParamaterNil,
 } ControlParamaterType;
 
