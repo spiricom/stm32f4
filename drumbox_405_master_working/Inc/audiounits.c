@@ -30,7 +30,18 @@ int tPhasorInit(tPhasor *p, float sr) {
 	return 0; 
 }
 
-// Envelope detect
+float tDelayTick(tDelay *d, float x) {
+	
+	return 0.0f;
+}
+
+/* Delay */
+int tDelayInit(tDelay *d, float sr) {
+	
+	return 0;
+}
+
+/* Envelope detect */
 float tEnvelopeFollowerTick(tEnvelopeFollower *ef, float x) {
 
 	if(x < 0.0f ) x = -x;  /* Absolute value. */
@@ -77,7 +88,7 @@ int tEnvelopeFollowerInit(tEnvelopeFollower *ef, float attackThreshold, float de
 	return 0;
 }
 
-// Highpass 
+/* Highpass */ 
 int tHighpassFreq(tHighpass *hp, float freq) {
 	
 	hp->R = (1.0f-((freq * 2.0f * 3.14f)*hp->inv_sr));

@@ -25,7 +25,7 @@ This is the Snyderphonics DrumBox synthesis code.
 #define NUM_SMOOTHED_PARAMS 3
 #define NUM_KNOBS 6
 
-float currParamValue[NUM_SMOOTHED_PARAMS];
+float smoothedParams[NUM_SMOOTHED_PARAMS];
 
 // Sine 
 tCycle sin1; 
@@ -99,19 +99,14 @@ uint8_t ADC_in[2];
 
 /* Private function prototypes -----------------------------------------------*/
 // PROTOTYPES
-float MtoF(float midi);
 float KSprocess(float);
-float adc_env_detector(float, int);	
-float FastTanh2Like4Term(float);
-float FastTanh2Like1Term(float);
 void readExternalADC(void);
 void sendBytesToOtherIC(uint8_t startingByte, uint8_t data);
 uint8_t readBytesFromOtherIC(uint8_t startingByte);
 void WRITE_FLOAT_AS_BYTES(uint8_t byteNum, float data);
 float READ_BYTES_AS_FLOAT(uint8_t byteNum);
 void setDelay(float);
-float myProcess(float);
-void 	initScalars(void);
+float audioProcess(float);
 float interpolateFeedback(float raw_data);
 float interpolateDelayControl(float raw_data);
 void audioStep(uint16_t buffer_offset);
@@ -144,8 +139,7 @@ void audioInit(void)
 	//now to send all the necessary messages to the codec
 	AudioCodec_init();
 	HAL_Delay(100);
-	//set up the scalars that set the decay times for the envelopes
-	initScalars();
+
 	// set up the I2S driver to send audio data to the codec (and retrieve input as well)	
 	HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
 }
@@ -160,21 +154,21 @@ void audioStep(uint16_t buffer_offset)
 			{
 				if ((i & 1) == 0)
 				{
-					current_sample = (int16_t)(myProcess((float) (Receive_Buffer[HALF_BUFFER_SIZE + i] * INV_TWO_TO_15)) * TWO_TO_15);
+					current_sample = (int16_t)(audioProcess((float) (Receive_Buffer[HALF_BUFFER_SIZE + i] * INV_TWO_TO_15)) * TWO_TO_15);
 				}
 				Send_Buffer[buffer_offset + i] = current_sample;
 			}
 			readExternalADC();
 }
 
-float myProcess(float audioIn) {
+float audioProcess(float audioIn) {
 	
 	envFollowNoise.decayCoeff(&envFollowNoise,adc1[ADC_values[ControlParameterNoiseDecay]]);
   envFollowSine.decayCoeff(&envFollowSine,adc1[ADC_values[ControlParameterSineDecay]]); 	
 	
 	//set frequency of sine and delay
-	sin1.freq(&sin1, MtoF((currParamValue[ControlParameterFrequency]) * 109.0f + 25.f));
-	setDelay(currParamValue[ControlParameterDelay]);
+	sin1.freq(&sin1, mtof1[(uint16_t)(smoothedParams[ControlParameterFrequency] * 4096.0f)]);
+	setDelay(smoothedParams[ControlParameterDelay]);
 	
 	float newAttackThresh = ((float)ADC_values[ControlParameterThreshold]) * INV_TWO_TO_12 * 0.2f;
 	envFollowNoise.attackThresh(&envFollowNoise,newAttackThresh);
@@ -186,47 +180,11 @@ float myProcess(float audioIn) {
   sample = highpass1.tick(&highpass1, shaper1[(uint16_t)((sample+1.0f)*0.5f * TWO_TO_15)]);
 
 	//update Parameters
-	currParamValue[ControlParameterFeedback] = rampFeedback.step(&rampFeedback);
-	currParamValue[ControlParameterFrequency] = rampSineFreq.step(&rampSineFreq);
-	currParamValue[ControlParameterDelay] = rampDelayFreq.step(&rampDelayFreq);
+	smoothedParams[ControlParameterFeedback] = rampFeedback.step(&rampFeedback);
+	smoothedParams[ControlParameterFrequency] = rampSineFreq.step(&rampSineFreq);
+	smoothedParams[ControlParameterDelay] = rampDelayFreq.step(&rampDelayFreq);
 
   return sample;
-}
-
-
-float MtoF(float midi) 
-{
-	return powf(2.f, (midi - 69.f) * 0.0833f) * 440.f;
-}
-
-float FastTanh2Like4Term(float Input)
-{
-	float a, b;
-	if (Input < 0.0f)
-	{
-		a = Input * -1.0f;
-	}
-	else
-	{
-		a = Input;
-	}
-	b = 12.0f + a * (6.0f + a * (3.0f + a));
-	return (Input * b) / (a * b + 24.0f);
-
-}
-
-float FastTanh2Like1Term(float Input)
-{
-	float a;
-	if (Input < 0.0f)
-	{
-		a = Input * -1.0f;
-	}
-	else
-	{
-		a = Input;
-	}
-	return (Input / (a + 3.0f));
 }
 
 float interpolateDelayControl(float raw_data)
@@ -376,7 +334,7 @@ float KSprocess(float noise_in)
 {
 		float temp_sample;
 	  
-		temp_sample = noise_in + (feedbacksamp * currParamValue[ControlParameterFeedback]);
+		temp_sample = noise_in + (feedbacksamp * smoothedParams[ControlParameterFeedback]);
 		
 		feedbacksamp = delayTick(temp_sample);
 				
