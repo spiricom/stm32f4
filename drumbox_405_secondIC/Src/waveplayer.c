@@ -12,6 +12,10 @@ This is the Snyderphonics DrumBox synthesis code.
 #include "main.h"
 #include "spi.h"
 
+#include "wavetables.h"
+#include "audiounits.h"
+#include "utilities.h"
+
 #define AUDIO_BUFFER_SIZE             256 //four is the lowest number that makes sense -- 2 samples for each computed sample (L/R), and then half buffer fills
 #define HALF_BUFFER_SIZE      (AUDIO_BUFFER_SIZE/2)
 

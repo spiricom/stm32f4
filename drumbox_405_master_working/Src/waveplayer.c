@@ -25,7 +25,16 @@ This is the Snyderphonics DrumBox synthesis code.
 #define NUM_SMOOTHED_PARAMS 3
 #define NUM_KNOBS 6
 
+#define DELAY_BUFFER_LENGTH 16384
+
+/* Ping-Pong buffer used for audio play */
+int16_t Send_Buffer[AUDIO_BUFFER_SIZE];
+int16_t Receive_Buffer[AUDIO_BUFFER_SIZE];
+
 float smoothedParams[NUM_SMOOTHED_PARAMS];
+float delayBuffer1[DELAY_BUFFER_LENGTH];
+
+
 
 // Sine 
 tCycle sin1; 
@@ -46,52 +55,28 @@ tHighpass highpass2;
 tEnvelopeFollower envFollowNoise;
 tEnvelopeFollower envFollowSine;
 
-float delayed_samples[DELAY_BUF_LENGTH];
+// Delay 
+tDelay delay1;
+
+
 int whichKnob = 0;
 float feedbacksamp = 0.f;
-float oldFeedbackSamp = 0.f;
-float historyCrossfade = 0.f;
-int crossfade_count;
-float	our_tempdelay = 100.f;
-float	our_lastdelay = 100.f;
-const float qm1 = 1.f / 0.33f;
-float	envOutput[3] = {0.0f};
-float	envGain[3] = {0.0f};
-float env_detector_thresh = .05f;
-float prevEnvGain = 0.f;
-int16_t ledVal = 0;
 
 float newFreq = 0.0f;
 float newDelay = 0.0f;
 float newFeedback = 0.0f;
-float newDecay = 0.0f;
-float newDecaySine, newDecayNoise, newCF_DelaySine, newCF_NoiseSine;
 float gainBoost = 0.3f;
 
-int N = 0;
-float noiseGain = 1.f;
-float m_input0 =0.f;
 float m_input1 = 0.f;
 float	m_output0 = 0.f;
 
-float m_input0_f2 =0.f;
-float m_input1_f2 = 0.f;
-float	m_output0_f2 = 0.f;
-float	lpOut_f2 = 0.f;
 
-int16_t computed_samples[HALF_BUFFER_SIZE];
+#define FEEDBACK_LOOKUP_SIZE 5
+#define DELAY_LOOKUP_SIZE 4
+float FeedbackLookup[FEEDBACK_LOOKUP_SIZE] = { 0.0f, 0.8f, .999f, 1.0f, 1.001f };
+//float DelayLookup[DELAY_LOOKUP_SIZE] = { 16000.f, 1850.f, 180.f, 40.f };
+float DelayLookup[DELAY_LOOKUP_SIZE] = { 50.f, 180.f, 1400.f, 16300.f };
 
-#define FEEDBACK_LOOKUP 5
-#define DELAY_LOOKUP 4
-float FeedbackLookup[FEEDBACK_LOOKUP] = { 0.0f, 0.8f, .999f, 1.0f, 1.001f };
-//float DelayLookup[DELAY_LOOKUP] = { 16000.f, 1850.f, 180.f, 40.f };
-float DelayLookup[DELAY_LOOKUP] = { 50.f, 180.f, 1400.f, 16300.f };
-
-/* Ping-Pong buffer used for audio play */
-int16_t Send_Buffer[AUDIO_BUFFER_SIZE];
-int16_t Receive_Buffer[AUDIO_BUFFER_SIZE];
-
-float scalar[3];
 uint8_t ADC_out[2];
 uint8_t ADC_in[2];
 #define ADC_BUFFERSIZE 2
@@ -99,17 +84,17 @@ uint8_t ADC_in[2];
 
 /* Private function prototypes -----------------------------------------------*/
 // PROTOTYPES
-float KSprocess(float);
+float ksTick(float);
 void readExternalADC(void);
+float audioProcess(float);
+void audioTick(uint16_t buffer_offset);
+float interpolateDelayControl(float raw_data);
+float interpolateFeedback(float raw_data);
+
 void sendBytesToOtherIC(uint8_t startingByte, uint8_t data);
 uint8_t readBytesFromOtherIC(uint8_t startingByte);
 void WRITE_FLOAT_AS_BYTES(uint8_t byteNum, float data);
 float READ_BYTES_AS_FLOAT(uint8_t byteNum);
-void setDelay(float);
-float audioProcess(float);
-float interpolateFeedback(float raw_data);
-float interpolateDelayControl(float raw_data);
-void audioStep(uint16_t buffer_offset);
 
 /* Private functions ---------------------------------------------------------*/
 
@@ -135,6 +120,7 @@ void audioInit(void)
 	tHighpassInit(&highpass2, SAMPLE_RATE, 20.0f);
 	tEnvelopeFollowerInit(&envFollowNoise, 0.05, 0.0f);
 	tEnvelopeFollowerInit(&envFollowSine, 0.05, 0.0f);
+	tDelayInit(&delay1,delayBuffer1);
 	
 	//now to send all the necessary messages to the codec
 	AudioCodec_init();
@@ -145,7 +131,7 @@ void audioInit(void)
 }
 
 
-void audioStep(uint16_t buffer_offset)
+void audioTick(uint16_t buffer_offset)
 {
 			uint16_t i = 0;
 			int16_t current_sample = 0;    
@@ -168,23 +154,43 @@ float audioProcess(float audioIn) {
 	
 	//set frequency of sine and delay
 	sin1.freq(&sin1, mtof1[(uint16_t)(smoothedParams[ControlParameterFrequency] * 4096.0f)]);
-	setDelay(smoothedParams[ControlParameterDelay]);
+	
+	//setDelay(smoothedParams[ControlParameterDelay]);
+	delay1.setDelay(&delay1, smoothedParams[ControlParameterDelay]);
+	
 	
 	float newAttackThresh = ((float)ADC_values[ControlParameterThreshold]) * INV_TWO_TO_12 * 0.2f;
 	envFollowNoise.attackThresh(&envFollowNoise,newAttackThresh);
   envFollowSine.attackThresh(&envFollowSine,newAttackThresh); 	
 	
-	float sample = ((KSprocess(audioIn) * 0.7f) + audioIn * 0.8f);
-	sample += (0.8f * ((sin1.step(&sin1) * envFollowSine.tick(&envFollowSine,audioIn) * 0.8f) + (noise1.step(&noise1) * envFollowNoise.tick(&envFollowNoise,audioIn) * 0.5f)));
+	float sample = ((ksTick(audioIn) * 0.7f) + audioIn * 0.8f);
+	sample += (0.8f * ((sin1.tick(&sin1) * envFollowSine.tick(&envFollowSine,audioIn) * 0.8f) + (noise1.tick(&noise1) * envFollowNoise.tick(&envFollowNoise,audioIn) * 0.5f)));
 	sample *= gainBoost;
   sample = highpass1.tick(&highpass1, shaper1[(uint16_t)((sample+1.0f)*0.5f * TWO_TO_15)]);
 
 	//update Parameters
-	smoothedParams[ControlParameterFeedback] = rampFeedback.step(&rampFeedback);
-	smoothedParams[ControlParameterFrequency] = rampSineFreq.step(&rampSineFreq);
-	smoothedParams[ControlParameterDelay] = rampDelayFreq.step(&rampDelayFreq);
+	smoothedParams[ControlParameterFeedback] = rampFeedback.tick(&rampFeedback);
+	smoothedParams[ControlParameterFrequency] = rampSineFreq.tick(&rampSineFreq);
+	smoothedParams[ControlParameterDelay] = rampDelayFreq.tick(&rampDelayFreq);
 
   return sample;
+}
+
+float ksTick(float noise_in)
+{
+		float temp_sample;
+	  
+		temp_sample = noise_in + (feedbacksamp * smoothedParams[ControlParameterFeedback]);
+		
+		//feedbacksamp = delayTick(temp_sample);
+		feedbacksamp = delay1.tick(&delay1, temp_sample);
+				
+	  //simple one-zero lowpass filter (moving average)
+		m_output0 = 0.5f * m_input1 + 0.5f * feedbacksamp;
+		m_input1 = feedbacksamp;
+		feedbacksamp = m_output0;
+		//float samp = tanh[(uint16_t)((((highpass2.tick(&highpass2,feedbacksamp)) + 1.0f) * 0.5f) * TWO_TO_15)];
+		return shaper1[(uint16_t)((((highpass2.tick(&highpass2,feedbacksamp)) + 1.0f) * 0.5f) * TWO_TO_15)];
 }
 
 float interpolateDelayControl(float raw_data)
@@ -224,7 +230,6 @@ float interpolateFeedback(float raw_data)
 		return (FeedbackLookup[3] + ((FeedbackLookup[4] - FeedbackLookup[3]) * ((scaled_raw - 0.95f) * 20.0f )));
 	}
 }
-
 
 void readExternalADC(void)
 {
@@ -273,79 +278,6 @@ void readExternalADC(void)
 	}
 }
 
-
-float nextOutput;
-int inPoint = 0;
-float length = DELAY_BUF_LENGTH;
-uint32_t outPoint;
-float delay;
-float alpha, omAlpha;
-uint32_t outPoint;
-
-void setDelay(float theDelay)
-{
-  float outPointer;
-
-	outPointer = inPoint - theDelay;  // read chases write
-	delay = theDelay;
-
-  while (outPointer < 0)
-    outPointer += length; // modulo maximum length
-
-  outPoint = (uint32_t) outPointer;  // integer part
-  alpha = outPointer - outPoint; // fractional part
-  omAlpha = (float) 1.0 - alpha;
-}
-
-
-float interpolatedDelay(void)
-{
-  
-	// First 1/2 of interpolation
-	nextOutput = delayed_samples[outPoint] * omAlpha;
-	// Second 1/2 of interpolation
-	if (outPoint+1 < length)
-		nextOutput += delayed_samples[outPoint+1] * alpha;
-	else
-		nextOutput += delayed_samples[0] * alpha;
-
-  return nextOutput;
-}
-
-float delayTick(float sample)
-{
-	float output_sample;
-  delayed_samples[inPoint++] = sample;
-
-  // Increment input pointer modulo length.
-  if (inPoint == length)
-    inPoint -= length;
-
-  output_sample = interpolatedDelay();
-
-   // Increment output pointer modulo length.
-  if (++outPoint >= length)
-    outPoint -= length;
-
-  return output_sample;
-}
-
-float KSprocess(float noise_in)
-{
-		float temp_sample;
-	  
-		temp_sample = noise_in + (feedbacksamp * smoothedParams[ControlParameterFeedback]);
-		
-		feedbacksamp = delayTick(temp_sample);
-				
-	  //simple one-zero lowpass filter (moving average)
-		m_output0 = 0.5f * m_input1 + 0.5f * feedbacksamp;
-		m_input1 = feedbacksamp;
-		feedbacksamp = m_output0;
-		//float samp = tanh[(uint16_t)((((highpass2.tick(&highpass2,feedbacksamp)) + 1.0f) * 0.5f) * TWO_TO_15)];
-		return shaper1[(uint16_t)((((highpass2.tick(&highpass2,feedbacksamp)) + 1.0f) * 0.5f) * TWO_TO_15)];
-}
-
 void sendBytesToOtherIC(uint8_t startingByte, uint8_t data) 
 {
 }
@@ -375,12 +307,12 @@ float READ_BYTES_AS_FLOAT(uint8_t byteNum) {
 
 void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
 {
-	audioStep(HALF_BUFFER_SIZE);
+	audioTick(HALF_BUFFER_SIZE);
 }
 
 void HAL_I2S_TxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
 {
-  audioStep(0);
+  audioTick(0);
 }
 
 void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s)

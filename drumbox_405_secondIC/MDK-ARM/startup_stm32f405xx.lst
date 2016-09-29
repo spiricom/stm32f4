@@ -854,13 +854,14 @@ ARM Macro Assembler    Page 14
               00000000 
 Command Line: --debug --xref --diag_suppress=9931 --cpu=Cortex-M4.fp --apcs=int
 erwork --depend="drumbox_405_secondic configuration\startup_stm32f405xx.d" -o"d
-rumbox_405_secondic configuration\startup_stm32f405xx.o" -IC:\Users\AirWolf\Doc
-uments\GitHub\snyderphonics\drumbox\drumbox_405_secondIC\MDK-ARM\RTE -IC:\Keil_
-v5\ARM\PACK\Keil\STM32F4xx_DFP\2.4.0 -IC:\Keil_v5\ARM\CMSIS\Include -IC:\Keil_v
-5\ARM\PACK\Keil\STM32F4xx_DFP\2.4.0\Device\Include --predefine="__MICROLIB SETA
- 1" --predefine="__UVISION_VERSION SETA 514" --predefine="STM32F405xx SETA 1" -
--list=startup_stm32f405xx.lst ..\Drivers\CMSIS\Device\ST\STM32F4xx\Source\Templ
-ates\arm\startup_stm32f405xx.s
+rumbox_405_secondic configuration\startup_stm32f405xx.o" -IC:\Documents\en.stm3
+2cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\d
+rumbox_405_secondIC\MDK-ARM\RTE -IC:\Keil_v5\ARM\PACK\Keil\STM32F4xx_DFP\2.9.0\
+Drivers\CMSIS\Device\ST\STM32F4xx\Include -IC:\Keil_v5\ARM\CMSIS\Include -IC:\K
+eil_v5\ARM\PACK\Keil\STM32F4xx_DFP\2.9.0\Device\Include --predefine="__MICROLIB
+ SETA 1" --predefine="__UVISION_VERSION SETA 520" --predefine="STM32F405xx SETA
+ 1" --list=startup_stm32f405xx.lst ..\Drivers\CMSIS\Device\ST\STM32F4xx\Source\
+Templates\arm\startup_stm32f405xx.s
 
 
 
