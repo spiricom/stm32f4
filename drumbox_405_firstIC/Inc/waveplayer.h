@@ -69,6 +69,7 @@ typedef enum
 #define TWO_TO_12 4096.f
 #define INV_TWO_TO_12 1.f/TWO_TO_12
 #define TWO_TO_15 32768.f
+#define TWO_TO_16 65536.f
 #define INV_TWO_TO_15 1.f/TWO_TO_15
 
 #define ADC_BUFFER_LEN 32

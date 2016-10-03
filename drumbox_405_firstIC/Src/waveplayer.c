@@ -39,6 +39,8 @@ This is the Snyderphonics DrumBox synthesis code.
 
 #define DELAY_BUFFER_LENGTH 16384
 
+#define NUM_FB_DELAY_TABLES 8
+
 /* Ping-Pong buffer used for audio play */
 int16_t Send_Buffer[AUDIO_BUFFER_SIZE];
 int16_t Receive_Buffer[AUDIO_BUFFER_SIZE];
@@ -99,12 +101,18 @@ tEnvelopeFollower envFollowSine;
 // Delay 
 tDelay delay1;
 
+// Gain
+float masterGain = 0.3f;
+float sineGain = 0.8f;
+float noiseGain = 0.8f; 
+float ksGain = 0.7f;
+
 float feedbacksamp = 0.f;
 
 float newFreq = 0.0f;
 float newDelay = 0.0f;
 float newFeedback = 0.0f;
-float gainBoost = 0.3f;
+
 
 float m_input1 = 0.f;
 float	m_output0 = 0.f;
@@ -114,6 +122,9 @@ float	m_output0 = 0.f;
 float FeedbackLookup[FEEDBACK_LOOKUP_SIZE] = { 0.0f, 0.8f, .999f, 1.0f, 1.001f };
 //float DelayLookup[DELAY_LOOKUP_SIZE] = { 16000.f, 1850.f, 180.f, 40.f };
 float DelayLookup[DELAY_LOOKUP_SIZE] = { 50.f, 180.f, 1400.f, 16300.f };
+
+float feedbackDelayPeriod[NUM_FB_DELAY_TABLES];
+const float *feedbackDelayTable[NUM_FB_DELAY_TABLES] = { FB1, FB2, FB3, FB4, FB5, FB6, FB7, FB8 };
 
 
 uint8_t ADC_out[2];
@@ -210,6 +221,12 @@ void audioInit(void)
 
 	int16_t dummy1 = 0;
 	uint16_t dummy2 = 0;
+	
+	float fbdp = 0.0002604165; //min feedback delay period
+	for (int i = 0; i < NUM_FB_DELAY_TABLES; i++) {
+		feedbackDelayPeriod[i] = fbdp;
+		fbdp *= 2.0f;
+	}
 
 	// Initialize cycle.
 	// initialize audio 
@@ -219,7 +236,7 @@ void audioInit(void)
 	tRampInit(&rampSineFreq, SAMPLE_RATE, 10.0f, 1);
 	tRampInit(&rampDelayFreq, SAMPLE_RATE, 10.0f, 1);
 	tHighpassInit(&highpass1, SAMPLE_RATE, 20.0f);
-	tHighpassInit(&highpass2, SAMPLE_RATE, 20.0f);
+	tHighpassInit(&highpass2, SAMPLE_RATE, 45.0f);
 	tEnvelopeFollowerInit(&envFollowNoise, 0.05, 0.0f);
 	tEnvelopeFollowerInit(&envFollowSine, 0.05, 0.0f);
 	tDelayInit(&delay1,delayBuffer1);
@@ -329,9 +346,15 @@ float audioProcess(float audioIn) {
 	envFollowNoise.attackThresh(&envFollowNoise,newAttackThresh);
   envFollowSine.attackThresh(&envFollowSine,newAttackThresh); 	
 	
-	float sample = ((ksTick(audioIn) * 0.7f) + audioIn * 0.8f);
-	sample += (0.8f * ((sin1.tick(&sin1) * envFollowSine.tick(&envFollowSine,audioIn) * 0.8f) + (noise1.tick(&noise1) * envFollowNoise.tick(&envFollowNoise,audioIn) * 0.5f)));
-	sample *= gainBoost;
+	float sample = 0.8f * audioIn;
+	if (ADC_values[ControlParameterFeedback] > 5) 
+		sample += (ksGain * ksTick(audioIn));
+	if (ADC_values[ControlParameterSineDecay] > 5) 
+		sample += (sineGain * sin1.tick(&sin1) * envFollowSine.tick(&envFollowSine,audioIn));
+	if (ADC_values[ControlParameterNoiseDecay] > 5) 
+		sample += (noiseGain * noise1.tick(&noise1) * envFollowNoise.tick(&envFollowNoise,audioIn));
+	
+	sample *= masterGain;
   sample = highpass1.tick(&highpass1, shaper1[(uint16_t)((sample+1.0f)*0.5f * TWO_TO_15)]);
 
 	//update Parameters
@@ -340,6 +363,16 @@ float audioProcess(float audioIn) {
 	smoothedParams[ControlParameterDelay] = rampDelayFreq.tick(&rampDelayFreq);
 
   return sample;
+}
+float clip(float min, float val, float max) {
+	
+	if (val < min) {
+		return min;
+	} else if (val > max) {
+		return max;
+	} else {
+		return val;
+	}
 }
 
 float ksTick(float noise_in)
@@ -354,10 +387,10 @@ float ksTick(float noise_in)
 	  //simple one-zero lowpass filter (moving average)
 		m_output0 = 0.5f * m_input1 + 0.5f * feedbacksamp;
 		m_input1 = feedbacksamp;
-		feedbacksamp = m_output0;
-		//float samp = tanh[(uint16_t)((((highpass2.tick(&highpass2,feedbacksamp)) + 1.0f) * 0.5f) * TWO_TO_15)];
-		return shaper1[(uint16_t)((((highpass2.tick(&highpass2,feedbacksamp)) + 1.0f) * 0.5f) * TWO_TO_15)];
+		feedbacksamp = clip(-1.0f,highpass2.tick(&highpass2,m_output0),1.0f);
+		return shaper1[(uint16_t)(((feedbacksamp + 1.0f) * 0.5f) * (TWO_TO_16-1))];
 }
+
 
 void readExternalADC(void)
 {
@@ -423,75 +456,76 @@ float interpolateDelayControl(float raw_data)
 		return (DelayLookup[2] + ((DelayLookup[3] - DelayLookup[2]) * ((scaled_raw - 0.6f) * 2.5f)));
 	}	
 }
-
-float fb1d = 0.01f; // arbitrary 10ms min delay length
-float fb2d = 0.02f;
-float fb4d = 0.04f;
-float fb8d = 0.08f;
-float fb16d = 0.16f;
-float fb32d = 0.32f;
-float fb3413d = 0.341333334f; // non-arbitrary 341.33333 ms max delay length (16384/48000)
-
-float interpolateFeedback(uint16_t idx)
-{
-#if USE_NEW_FEEDBACK
-	float delayTime = smoothedParams[ControlParameterDelay];
-	float w1,w2,range;
+float out;
+uint16_t index1;
+float delPer;
+float w1,w2,range;
+float interpolateFeedback(uint16_t idx) {
 	
-	if (delayTime < fb2d) {
-		// interp between fb1 and fb2
-		range = fb2d - fb1d; 
-		w2 = (fb2d - delayTime)/range;
-		w1 = 1.0f - w2; 
-		
-		return (fb1[idx] * w1) + (fb2[idx] * w2); 
-		
-	} else if (delayTime < fb4d) {
-		// interp between fb2 and fb4
-		range = fb4d - fb2d; 
-		w2 = (fb4d - delayTime)/range;
-		w1 = 1.0f - w2; 
-		
-		return (fb2[idx] * w1) + (fb4[idx] * w2); 
-		
-	} else if (delayTime < fb8d) {
-		// interp between fb4 and fb8
-		range = fb8d - fb4d; 
-		w2 = (fb4d - delayTime)/range;
-		w1 = 1.0f - w2; 
-		
-		return (fb4[idx] * w1) + (fb8[idx] * w2); 
-	} else if (delayTime < fb16d) {
-		// interp between fb8 and fb16
-		range = fb16d - fb8d; 
-		w2 = (fb16d - delayTime)/range;
-		w1 = 1.0f - w2; 
-		
-		return (fb8[idx] * w1) + (fb16[idx] * w2); 
-	} else if (delayTime < fb32d) {
-		// interp between fb16 and fb32
-		range = fb32d - fb16d; 
-		w2 = (fb32d - delayTime)/range;
-		w1 = 1.0f - w2; 
-		
-		return (fb16[idx] * w1) + (fb32[idx] * w2); 
-	} else if (delayTime < fb3413d) {
-		// interp between fb32 and fb3413
-		range = fb3413d - fb32d; 
-		w2 = (fb3413d - delayTime)/range;
-		w1 = 1.0f - w2; 
-		
-		return (fb32[idx] * w1) + (fb3413[idx] * w2); 
-	} else {
-		// interp between fb1 and fb2
-		range = fb2d - fb1d; 
-		w2 = (fb2d - delayTime)/range;
-		w1 = 1.0f - w2; 
-		
-		return (fb1[idx] * w1) + (fb2[idx] * w2);
+	index1 = idx;
+	float delayPeriod = (smoothedParams[ControlParameterDelay] * INV_SAMPLE_RATE);
+	delPer = delayPeriod;
+	
+	
+	if (delayPeriod < feedbackDelayPeriod[0]) {
+			out = FB1[idx];
+	} else if (delayPeriod < feedbackDelayPeriod[1]) {
+			// interp between fb[i] and fb[i-1]
+			range = feedbackDelayPeriod[1] - feedbackDelayPeriod[0]; 
+			w1 = (feedbackDelayPeriod[1] - delayPeriod)/range;
+			w2 = 1.0f - w1; 
 
-	}
-#else	
+			out = (FB1[idx] * w1) + (FB2[idx] * w2); 	
+	} else if (delayPeriod < feedbackDelayPeriod[2]) {
+		
+			range = feedbackDelayPeriod[2] - feedbackDelayPeriod[1]; 
+			w1 = (feedbackDelayPeriod[2] - delayPeriod)/range;
+			w2 = 1.0f - w1; 
+
+			out = (FB2[idx] * w1) + (FB3[idx] * w2); 	
+	} else if (delayPeriod < feedbackDelayPeriod[3]) {
+		
+			range = feedbackDelayPeriod[3] - feedbackDelayPeriod[2]; 
+			w1 = (feedbackDelayPeriod[3] - delayPeriod)/range;
+			w2 = 1.0f - w1; 
+
+			out = (FB3[idx] * w1) + (FB4[idx] * w2);
+	} else if (delayPeriod < feedbackDelayPeriod[4]) {
+		
+			range = feedbackDelayPeriod[4] - feedbackDelayPeriod[3]; 
+			w1 = (feedbackDelayPeriod[4] - delayPeriod)/range;
+			w2 = 1.0f - w1; 
+
+			out = (FB4[idx] * w1) + (FB5[idx] * w2);
+	} else if (delayPeriod < feedbackDelayPeriod[5]) {
+		
+			range = feedbackDelayPeriod[5] - feedbackDelayPeriod[4]; 
+			w1 = (feedbackDelayPeriod[5] - delayPeriod)/range;
+			w2 = 1.0f - w1; 
+
+			out = (FB5[idx] * w1) + (FB6[idx] * w2);
+	} else if (delayPeriod < feedbackDelayPeriod[6]) {
+		
+			range = feedbackDelayPeriod[6] - feedbackDelayPeriod[5]; 
+			w1 = (feedbackDelayPeriod[6] - delayPeriod)/range;
+			w2 = 1.0f - w1; 
+
+			out = (FB6[idx] * w1) + (FB7[idx] * w2);
+	} else if (delayPeriod < feedbackDelayPeriod[7]) {
+		
+			range = feedbackDelayPeriod[7] - feedbackDelayPeriod[6]; 
+			w1 = (feedbackDelayPeriod[7] - delayPeriod)/range;
+			w2 = 1.0f - w1; 
+
+			out = (FB7[idx] * w1) + (FB8[idx] * w2);
+	}else  {
+			out = FB8[idx] ;
+	} 
+	
+	return out;
+	
+
+/*
 	float scaled_raw = idx * INV_TWO_TO_12;
 	if (scaled_raw < 0.2f)
 	{
@@ -509,7 +543,8 @@ float interpolateFeedback(uint16_t idx)
 	{
 		return (FeedbackLookup[3] + ((FeedbackLookup[4] - FeedbackLookup[3]) * ((scaled_raw - 0.95f) * 20.0f )));
 	}
-#endif
+*/
+
 }
 
 void Write7SegWave(uint8_t value)
