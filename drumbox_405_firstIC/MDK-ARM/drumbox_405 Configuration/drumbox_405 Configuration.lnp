@@ -17,6 +17,7 @@
 "drumbox_405 configuration\waveplayer.o"
 "drumbox_405 configuration\audiounits.o"
 "drumbox_405 configuration\utilities.o"
+"drumbox_405 configuration\wavetables.o"
 "drumbox_405 configuration\system_stm32f4xx.o"
 "drumbox_405 configuration\usbd_cdc.o"
 "drumbox_405 configuration\usbd_ioreq.o"

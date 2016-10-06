@@ -1,6 +1,7 @@
 // Audio Units
 
 #include "audiounits.h"
+#include "wavetables.h"
 
 /* Phasor */
 static int phasorFreq(tPhasor *p, float freq) {
@@ -28,6 +29,86 @@ int tPhasorInit(tPhasor *p, float sr) {
 	p->tick = &phasortick;
 	
 	return 0; 
+}
+
+float tSVFTick(tSVF *svf, float v0) {
+	
+	float v1,v2,v3;
+	float low,high;
+	v3 = v0 - svf->ic2eq;
+	v1 = (svf->a1 * svf->ic1eq) + (svf->a2 * v3);
+	v2 = svf->ic2eq + (svf->a2 * svf->ic1eq) + (svf->a3 * v3);
+	svf->ic1eq = (2.0f * v1) - svf->ic1eq;
+	svf->ic2eq = (2.0f * v2) - svf->ic2eq;
+	
+	if (svf->type == SVFTypeLowpass) {
+		
+		return v2;
+	} else if (svf->type == SVFTypeBandpass) {
+		
+		return v1;
+	} else if (svf->type == SVFTypeHighpass) {
+		
+		return (v0 - (svf->k * v1) - v2);
+	} else if (svf->type == SVFTypeNotch) {
+		
+		return v0 - (svf->k * v1); 
+	} else if (svf->type == SVFTypePeak) {
+		
+		return v0 - (svf->k * v1) - 2.0f * v2;
+	} else {
+		
+		return 0.0f;
+	}
+	
+}
+
+int tSVFSetFreq(tSVF *svf, uint16_t cutoffKnob) {
+	
+	svf->g = filtertan[cutoffKnob];
+	svf->a1 = 1.0f/(1.0f + svf->g * (svf->g + svf->k));
+	svf->a2 = svf->g * svf->a1;
+	svf->a3 = svf->g * svf->a2;
+	
+	return 0;
+}
+
+int tSVFSetQ(tSVF *svf, float Q) {
+	
+	svf->k = 1.0f/Q;
+	svf->a1 = 1.0f/(1.0f + svf->g * (svf->g + svf->k));
+	svf->a2 = svf->g * svf->a1;
+	svf->a3 = svf->g * svf->a2;
+	
+	return 0;
+}
+
+int tSVFInit(tSVF *svf, float sr, SVFType type, uint16_t cutoffKnob, float Q) {
+	
+	svf->inv_sr = 1.0f/sr;
+	svf->type = type;
+	
+	svf->ic1eq = 0;
+	svf->ic2eq = 0;
+	
+	float a1,a2,a3,g,k;
+	g = filtertan[cutoffKnob]; 
+	k = 1.0f/Q;
+	a1 = 1.0f/(1.0f+g*(g+k));
+	a2 = g*a1;
+	a3 = g*a2;
+	
+	svf->g = g;
+	svf->k = k;
+	svf->a1 = a1;
+	svf->a2 = a2;
+	svf->a3 = a3;
+	
+	svf->tick = &tSVFTick;
+	svf->setQ = &tSVFSetQ;
+	svf->setFreq = &tSVFSetFreq; 
+	
+	return 0;
 }
 
 int tSetDelay(tDelay *d, float delay)

@@ -1,5 +1,6 @@
 #include "stdint.h"
 
+
 #define VERY_SMALL_FLOAT 1.0e-38f
 #define DELAY_BUFFER_SIZE 8192//16384
 
@@ -13,6 +14,30 @@ typedef struct _tDelay {
 } tDelay;
 
 int tDelayInit(tDelay *d, float *buff); 
+
+
+/* SVF Type */
+typedef enum SVFType {
+	SVFTypeHighpass = 0,
+	SVFTypeLowpass,
+	SVFTypeBandpass,
+	SVFTypeNotch,
+	SVFTypePeak,
+} SVFType;
+
+typedef struct _tSVF {
+	SVFType type;
+	float inv_sr;
+	float cutoff, Q;
+	float ic1eq,ic2eq;
+	float g,k,a1,a2,a3; 
+	float(*tick)(struct _tSVF *self, float v0);
+	int(*setFreq)(struct _tSVF *self, uint16_t cutoffKnob);
+	int(*setQ)(struct _tSVF *self, float Q);
+} tSVF;
+
+// 0-4096 is mapped to midi notes 16-130 for cutoff frequency
+int tSVFInit(tSVF *svf, float sr, SVFType type, uint16_t cutoffKnob, float Q); 
 
 
 /* Envelope Follower */

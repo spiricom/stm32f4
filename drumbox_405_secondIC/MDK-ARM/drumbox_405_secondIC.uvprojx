@@ -10,6 +10,7 @@
       <TargetName>drumbox_405_secondIC Configuration</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
+      <pCCUsed>5060183::V5.06 update 2 (build 183)::ARMCC</pCCUsed>
       <TargetOption>
         <TargetCommonOption>
           <Device>STM32F405RGTx</Device>
@@ -440,6 +441,16 @@
               <FileName>waveplayer.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Inc\waveplayer.h</FilePath>
+            </File>
+            <File>
+              <FileName>audiounits.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Src\audiounits.c</FilePath>
+            </File>
+            <File>
+              <FileName>utilities.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Src\utilities.c</FilePath>
             </File>
           </Files>
         </Group>
