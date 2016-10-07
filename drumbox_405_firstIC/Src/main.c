@@ -86,13 +86,15 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+	
   MX_DMA_Init();
-  MX_ADC3_Init();
   MX_I2C1_Init();
   MX_I2S3_Init();
-  MX_RNG_Init();
-  MX_SPI1_Init();
+	MX_SPI1_Init();
   MX_SPI2_Init();
+	
+	MX_ADC3_Init();
+  MX_RNG_Init();
   MX_USB_DEVICE_Init();
 
   /* USER CODE BEGIN 2 */

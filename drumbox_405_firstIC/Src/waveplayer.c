@@ -81,7 +81,9 @@ uint8_t ICbufferTx[IC_BUFFER_SIZE*10];
 uint8_t ICbufferRx[IC_BUFFER_SIZE*10];
 
 uint16_t ADC_values[NUM_ADC_VALUES];
-uint8_t externalDACOutputBuffer[10];
+
+#define NUM_BYTES_TO_SEND 9
+uint8_t externalDACOutputBuffer[NUM_BYTES_TO_SEND];
 
 // Sine 
 tCycle sin1; 
@@ -228,13 +230,14 @@ void setTrigOutLED(uint8_t set) {
 }
 	
 uint8_t highSpeedMode[1] = {8};
-
+#define I2C1_TEST_ENABLED 0
 void audioInit(void)
 { 
 
 	int16_t dummy1 = 0;
 	uint16_t dummy2 = 0;
 	
+	// Initialize feedback lookup table data.
 	float fbdp = 0.0002604165; //min feedback delay period
 	for (int i = 0; i < NUM_FB_DELAY_TABLES; i++) {
 		feedbackDelayPeriod[i] = fbdp;
@@ -259,6 +262,13 @@ void audioInit(void)
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // ADC CS pin goes high to make sure it's not selected
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET); // Other IC CS pin goes high to stop conversion
 	HAL_Delay(100);
+	
+#if I2C1_TEST_ENABLED
+	while(1) {
+		externalDAC_Send();
+		HAL_Delay(100);
+	}
+#endif
 
 #if TEST_LED_ENABLED
 	int x,y;
@@ -285,9 +295,6 @@ void audioInit(void)
 	HAL_Delay(100);
 	//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); 
 	
-	// Tell External DAC to run in high speed mode
-	//HAL_I2C_Master_Transmit(&hi2c1, 192, highSpeedMode, 1, TIMEOUT);
-	MX_I2C1_Init_HS();
 	
 	//MX_SPI1_Init();
 	//start_Other_IC_Communication();
@@ -442,7 +449,7 @@ float audioProcess(float audioIn) {
 
 void externalDAC_Send(void) {
 	// Address is 196
-	HAL_I2C_Master_Transmit(&hi2c1, 192, externalDACOutputBuffer, 10, TIMEOUT);
+	HAL_I2C_Master_Transmit(&hi2c1, 192, externalDACOutputBuffer, NUM_BYTES_TO_SEND, TIMEOUT);
 
 }
 
