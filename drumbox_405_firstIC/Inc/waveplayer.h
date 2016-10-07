@@ -80,6 +80,9 @@ typedef enum
 /* Exported functions ------------------------------------------------------- */
 void  audioInit(void);
 void  changePhaseInc(float freq);
+
+void DMA1_TransferCpltCallback(DMA_HandleTypeDef *hdma);
+void DMA1_HalfTransferCpltCallback(DMA_HandleTypeDef *hdma);
 #endif /* __WAVEPLAYER_H */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

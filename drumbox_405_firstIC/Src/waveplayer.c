@@ -84,6 +84,7 @@ uint16_t ADC_values[NUM_ADC_VALUES];
 
 #define NUM_BYTES_TO_SEND 9
 uint8_t externalDACOutputBuffer[NUM_BYTES_TO_SEND];
+uint8_t externalDACOutputBufferTX[NUM_BYTES_TO_SEND];
 
 // Sine 
 tCycle sin1; 
@@ -151,7 +152,8 @@ uint8_t CAT_LED[CAT_BUFFERSIZE];
 // PROTOTYPES
 
 // External Dac communication
-void externalDAC_Send(void);
+void DMA1_externalDACInit(void);
+void DMA1_externalDACSend(void);
 
 // IC communication functions
 void start_Other_IC_Communication(void);
@@ -290,6 +292,8 @@ void audioInit(void)
 			
 	}
 #endif
+	DMA1_externalDACInit();
+	HAL_Delay(100);
 	//now to send all the necessary messages to the codec
 	AudioCodec_init();
 	HAL_Delay(100);
@@ -300,10 +304,12 @@ void audioInit(void)
 	//start_Other_IC_Communication();
 	
 	// set up the I2S driver to send audio data to the codec (and retrieve input as well)	
-	HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
+	//HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
+	HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t *)&Send_Buffer[0], (uint16_t *)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
   
-	readAndWriteOtherChip(dummy1, dummy2);
-	HAL_SPI_TransmitReceive_DMA(&hspi1, (uint8_t *)IC_tx, (uint8_t *)IC_rx, IC_BUFFER_SIZE);
+	//readAndWriteOtherChip(dummy1, dummy2);
+	HAL_SPI_TransmitReceive_DMA(&hspi1, IC_tx, IC_rx, IC_BUFFER_SIZE); // removed (uint8_t *) casts before IC_tx and IC_rx
+	
 /*
   while(1)
 	{
@@ -362,7 +368,7 @@ void audioTick(uint16_t buffer_offset)
 }
 
 #define DACOUT 1
-	
+uint8_t newcount = 0;
 float audioProcess(float audioIn) {
 	
 	float Q = 14.9f * (ADC_values[ControlParameterThreshold] * INV_TWO_TO_12) + 0.1f;
@@ -406,34 +412,36 @@ float audioProcess(float audioIn) {
 	}
 	
 #if DACOUT
-	//externalDACOutputBuffer[0] = 8; 
-	externalDACOutputBuffer[0] = 0x50;
+	if (++newcount == 4) {
+		newcount = 0;
+		externalDACOutputBuffer[0] = 0x50;
 	
-	uint16_t sineEnvToDAC = (uint16_t)(sineEnv * TWO_TO_12);
-	externalDACOutputBuffer[1] = sineEnvToDAC >> 8; 
-	externalDACOutputBuffer[2] = (sineEnvToDAC & 255);
+		uint16_t sineEnvToDAC = (uint16_t)(sineEnv * TWO_TO_12);
+		externalDACOutputBuffer[1] = sineEnvToDAC >> 8; 
+		externalDACOutputBuffer[2] = (sineEnvToDAC & 255);
 	
-	uint16_t noiseEnvToDAC = (uint16_t)(noiseEnv * TWO_TO_12);
-	externalDACOutputBuffer[3] = noiseEnvToDAC >> 8; 
-	externalDACOutputBuffer[4] = (noiseEnvToDAC & 255); 
+		uint16_t noiseEnvToDAC = (uint16_t)(noiseEnv * TWO_TO_12);
+		externalDACOutputBuffer[3] = noiseEnvToDAC >> 8; 
+		externalDACOutputBuffer[4] = (noiseEnvToDAC & 255); 
 	
-	dacCount3+=3;
-	if (dacCount3 >= 4096) {
-		dacCount3 = 0;
-	}
+		dacCount3+=3;
+		if (dacCount3 >= 4096) {
+			dacCount3 = 0;
+		}
 	
-	dacCount4+=4;
-	if (dacCount4 >= 4096) {
-		dacCount4 = 0;
-	}
+		dacCount4++;
+		if (dacCount4 >= 4096) {
+			dacCount4 = 0;
+		}
 	
-	externalDACOutputBuffer[5] = (dacCount3 >> 8); 
-	externalDACOutputBuffer[6] = (dacCount3 & 255);
+		externalDACOutputBuffer[5] = (dacCount3 >> 8); 
+		externalDACOutputBuffer[6] = (dacCount3 & 255);
 
-	externalDACOutputBuffer[7] = (dacCount4 >> 8); 
-	externalDACOutputBuffer[8] = (dacCount4 & 255);
+		externalDACOutputBuffer[7] = (dacCount4 >> 8); 
+		externalDACOutputBuffer[8] = (dacCount4 & 255);
 	
-	externalDAC_Send();
+		DMA1_externalDACSend();
+	}
 #endif
 	sample *= masterGain;
   sample = highpass1.tick(&highpass1, shaper1[(uint16_t)((sample+1.0f)*0.5f * TWO_TO_15)]);
@@ -447,10 +455,29 @@ float audioProcess(float audioIn) {
 }
 
 
-void externalDAC_Send(void) {
-	// Address is 196
-	HAL_I2C_Master_Transmit(&hi2c1, 192, externalDACOutputBuffer, NUM_BYTES_TO_SEND, TIMEOUT);
+void DMA1_externalDACSend(void) {
+	// Start communication with external DAC
+	HAL_I2C_Master_Transmit_DMA(&hi2c1, 192, externalDACOutputBuffer, NUM_BYTES_TO_SEND);
 
+}
+
+void DMA1_externalDACInit(void) {
+	// Start communication with external DAC
+	//HAL_I2C_Master_Transmit_DMA(&hi2c1, 192, (uint8_t *)&externalDACOutputBufferTX[0], NUM_BYTES_TO_SEND);
+
+}
+
+
+void DMA1_TransferCpltCallback (DMA_HandleTypeDef *hdma) {
+	for (int i = 5; i < 9; i++) {
+		externalDACOutputBufferTX[i] = externalDACOutputBuffer[i];
+	}
+}
+
+void DMA1_HalfTransferCpltCallback (DMA_HandleTypeDef *hdma) {
+	for (int i = 0; i < 5; i++) {
+		externalDACOutputBufferTX[i] = externalDACOutputBuffer[i];
+	}
 }
 
 float clip(float min, float val, float max) {

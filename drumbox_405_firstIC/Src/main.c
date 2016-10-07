@@ -63,6 +63,8 @@ void SystemClock_Config(void);
 
 #include "waveplayer.h"
 
+extern DMA_HandleTypeDef hdma_i2c1_tx;
+
 
 
 void readExternalADC(void);
@@ -87,6 +89,26 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
 	
+	/*********************
+	I2C 1
+     DMA1 RX S5,C1
+     DMA1 TX S6,C1
+
+	I2S (SPI3)
+     DMA1 RX S0,C3
+     DMA1 TX S7,C0
+
+	SPI 1 (other chip)
+     DMA2 RX S0,C3
+     DMA2 TX S3,C3
+
+	SPI 2 (other chip)
+     DMA1 RX S3,C0
+     DMA1 TX S4,C0
+**********************/
+	hdma_i2c1_tx.XferCpltCallback = &DMA1_TransferCpltCallback;
+	hdma_i2c1_tx.XferHalfCpltCallback = &DMA1_HalfTransferCpltCallback;
+
   MX_DMA_Init();
   MX_I2C1_Init();
   MX_I2S3_Init();

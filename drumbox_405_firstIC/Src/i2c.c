@@ -44,6 +44,7 @@
 
 I2C_HandleTypeDef hi2c1;
 DMA_HandleTypeDef hdma_i2c1_rx;
+DMA_HandleTypeDef hdma_i2c1_tx;
 
 /* I2C1 init function */
 void MX_I2C1_Init(void)
@@ -108,6 +109,21 @@ void HAL_I2C_MspInit(I2C_HandleTypeDef* hi2c)
     HAL_DMA_Init(&hdma_i2c1_rx);
 
     __HAL_LINKDMA(hi2c,hdmarx,hdma_i2c1_rx);
+		
+		hdma_i2c1_tx.Instance = DMA1_Stream6;
+    hdma_i2c1_tx.Init.Channel = DMA_CHANNEL_1;
+    hdma_i2c1_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    hdma_i2c1_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_i2c1_tx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_i2c1_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_i2c1_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_i2c1_tx.Init.Mode = DMA_NORMAL;
+    hdma_i2c1_tx.Init.Priority = DMA_PRIORITY_MEDIUM;
+    hdma_i2c1_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+    HAL_DMA_Init(&hdma_i2c1_tx);
+
+    __HAL_LINKDMA(hi2c,hdmatx,hdma_i2c1_tx);
+
 
     /* Peripheral interrupt init*/
     HAL_NVIC_SetPriority(I2C1_EV_IRQn, 0, 13);

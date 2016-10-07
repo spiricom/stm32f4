@@ -28,14 +28,18 @@ Project File Date:  10/06/2016
 *** Using Compiler 'V5.06 update 2 (build 183)', folder: 'C:\Keil_v5\ARM\ARMCC\Bin'
 Build Project 'drumbox_405_firstIC' - Target 'drumbox_405 Configuration'
 compiling waveplayer.c...
-C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(203): warning:  #177-D: variable "spi1tx" was declared but never referenced
+C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(239): warning:  #177-D: variable "dummy1" was declared but never referenced
+  	int16_t dummy1 = 0;
+C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(240): warning:  #177-D: variable "dummy2" was declared but never referenced
+  	uint16_t dummy2 = 0;
+C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(205): warning:  #177-D: variable "spi1tx" was declared but never referenced
   static HAL_DMA_StateTypeDef spi1tx;
-C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(204): warning:  #177-D: variable "spi1rx" was declared but never referenced
+C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(206): warning:  #177-D: variable "spi1rx" was declared but never referenced
   static HAL_DMA_StateTypeDef spi1rx;
-..\Src\waveplayer.c: 2 warnings, 0 errors
+..\Src\waveplayer.c: 4 warnings, 0 errors
 linking...
-Program Size: Code=33272 RO-data=450996 RW-data=500 ZI-data=71596  
-"drumbox_405 Configuration\drumbox_405 Configuration.axf" - 0 Error(s), 2 Warning(s).
+Program Size: Code=33716 RO-data=450996 RW-data=500 ZI-data=71684  
+"drumbox_405 Configuration\drumbox_405 Configuration.axf" - 0 Error(s), 4 Warning(s).
 
 <h2>Software Packages used:</h2>
 

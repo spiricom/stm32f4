@@ -55,6 +55,25 @@ void MX_DMA_Init(void)
   __DMA1_CLK_ENABLE();
   __DMA2_CLK_ENABLE();
 
+  /*********************
+	I2C 1
+     DMA1 RX S5,C1
+     DMA1 TX S6,C1
+
+	I2S (SPI3)
+     DMA1 RX S0,C3
+     DMA1 TX S7,C0
+
+	SPI 1 (other chip)
+     DMA2 RX S0,C3
+     DMA2 TX S3,C3
+
+	SPI 2 (other chip)
+     DMA1 RX S3,C0
+     DMA1 TX S4,C0
+**********************/
+
+// Not sure about priorities
   /* DMA interrupt init */
   HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 1);
   HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
@@ -64,12 +83,15 @@ void MX_DMA_Init(void)
   HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
   HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 0, 8);
   HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+	HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 0, 4);
+  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
   HAL_NVIC_SetPriority(DMA1_Stream7_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream7_IRQn);
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 5);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
   HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 7);
   HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
+
 
 }
 
