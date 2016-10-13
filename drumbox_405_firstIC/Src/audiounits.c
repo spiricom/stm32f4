@@ -2,6 +2,10 @@
 
 #include "audiounits.h"
 #include "wavetables.h"
+#include "math.h"
+
+
+#define TWO_TO_16 65536.f
 
 /* Phasor */
 static int phasorFreq(tPhasor *p, float freq) {
@@ -175,7 +179,8 @@ float tEnvelopeFollowerTick(tEnvelopeFollower *ef, float x) {
 	else
 	{
 		 /* Exponential decay of output when signal is low. */
-		 ef->y *= ef->d_coeff;
+		 //ef->y = envelope_pow[(uint16_t)(ef->y * (float)UINT16_MAX)] * ef->d_coeff;
+		 ef->y = powf(ef->y, 1.000009f) * ef->d_coeff;
 		 /*
 		 ** When output gets close to 0.0, set output to 0.0 to prevent FP underflow
 		 ** which can cause a severe performance degradation due to a flood

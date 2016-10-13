@@ -45,8 +45,8 @@ This is the Snyderphonics DrumBox synthesis code.
 #define NUM_FB_DELAY_TABLES 8
 
 /* Ping-Pong buffer used for audio play */
-int16_t Send_Buffer[AUDIO_BUFFER_SIZE];
-int16_t Receive_Buffer[AUDIO_BUFFER_SIZE];
+int16_t audioOutBuffer[AUDIO_BUFFER_SIZE];
+int16_t audioInBuffer[AUDIO_BUFFER_SIZE];
 
 uint8_t whichKnob;
 
@@ -79,10 +79,15 @@ uint8_t IC_tx[IC_BUFFER_SIZE];
 uint8_t IC_rx[IC_BUFFER_SIZE];
 uint8_t ICbufferTx[IC_BUFFER_SIZE*10];
 uint8_t ICbufferRx[IC_BUFFER_SIZE*10];
-
+uint8_t I2CReset_buffer[1] = {0x06};
+uint8_t I2C_init_command[3] = {0x58, 0x90, 0x00};
 uint16_t ADC_values[NUM_ADC_VALUES];
 
-#define NUM_BYTES_TO_SEND 9
+
+// 0 = ADC, 1 = LED
+uint8_t whichSPI2 = 0;
+
+#define NUM_BYTES_TO_SEND 8
 uint8_t externalDACOutputBuffer[NUM_BYTES_TO_SEND];
 uint8_t externalDACOutputBufferTX[NUM_BYTES_TO_SEND];
 
@@ -103,6 +108,7 @@ tHighpass highpass2;
 
 // Envelope follower
 tEnvelopeFollower envFollowNoise;
+tEnvelopeFollower envFollowTrigOut;
 tEnvelopeFollower envFollowSine;
 
 // Delay 
@@ -114,7 +120,7 @@ tSVF svf1;
 // Gain
 float masterGain = 0.3f;
 float sineGain = 0.8f;
-float noiseGain = 0.8f; 
+float noiseGain = 1.5f; 
 float noiseFilterGain = 0.5f;
 float ksGain = 0.7f;
 
@@ -141,9 +147,15 @@ const float *feedbackDelayTable[NUM_FB_DELAY_TABLES] = { FB1, FB2, FB3, FB4, FB5
 uint8_t ADC_out[2];
 uint8_t ADC_in[2];
 
+uint8_t XYLED[2]; 
+
+uint8_t ADC_Tx_Ready = 0;
+uint8_t XY_Tx_Ready = 0;
+
+
 
 uint8_t CAT_LED[CAT_BUFFERSIZE];
-
+uint8_t JUNK_LED[CAT_BUFFERSIZE];
 
 #define ADC_BUFFERSIZE 2
 #define TIMEOUT 10
@@ -156,9 +168,8 @@ void DMA1_externalDACInit(void);
 void DMA1_externalDACSend(void);
 
 // IC communication functions
+void communicateWithOtherIC(void);
 void start_Other_IC_Communication(void);
-void sendBytesToOtherIC(uint8_t startingByte, uint8_t data);
-uint8_t readBytesFromOtherIC(uint8_t startingByte);
 int16_t readAndWriteOtherChip(int16_t, uint16_t);
 void WRITE_FLOAT_AS_BYTES(uint8_t byteNum, float data);
 float READ_BYTES_AS_FLOAT(uint8_t byteNum);
@@ -174,6 +185,7 @@ float audioProcess(float);
 float interpolateFeedback(uint16_t idx);
 float interpolateDelayControl(float raw_data);
 void audioTick(uint16_t buffer_offset);
+void setTrigOut(uint8_t set);
 
 
 void Write7SegWave(uint8_t value);
@@ -206,7 +218,7 @@ static HAL_DMA_StateTypeDef spi1tx;
 static HAL_DMA_StateTypeDef spi1rx;
 
 void setXYLED(uint8_t led1, uint8_t led2) {
-		
+	
 	if (led1 < NUM_LEDS) {
 		CAT_LED[0] = (1 << led1);
 	} else {
@@ -216,14 +228,13 @@ void setXYLED(uint8_t led1, uint8_t led2) {
 		CAT_LED[1] = (1 << led2);
 	} else {
 		CAT_LED[1] = 0;
-	}
-		
-		HAL_SPI_Transmit(&hspi2, (uint8_t *)CAT_LED, CAT_BUFFERSIZE, TIMEOUT);
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET); // CAT4016 Latch pin goes high to latch data
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET); // CAT4016 Latch pin goes back low to reset it
+	}	
+	//for (int i = 0; i < 10; i++);
+	HAL_SPI_TransmitReceive_DMA(&hspi2, (uint8_t *)CAT_LED, (uint8_t *)JUNK_LED,  CAT_BUFFERSIZE);
+	
 }
 
-void setTrigOutLED(uint8_t set) {
+void setTrigOut(uint8_t set) {
 	if (set) {
 		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_SET);
 	} else {
@@ -231,16 +242,15 @@ void setTrigOutLED(uint8_t set) {
 	}
 }
 	
-uint8_t highSpeedMode[1] = {8};
 #define I2C1_TEST_ENABLED 0
 void audioInit(void)
 { 
 
 	int16_t dummy1 = 0;
 	uint16_t dummy2 = 0;
-	
+	DMA1_externalDACInit();
 	// Initialize feedback lookup table data.
-	float fbdp = 0.0002604165; //min feedback delay period
+	float fbdp = 0.0002604165f; //min feedback delay period
 	for (int i = 0; i < NUM_FB_DELAY_TABLES; i++) {
 		feedbackDelayPeriod[i] = fbdp;
 		fbdp *= 2.0f;
@@ -251,23 +261,23 @@ void audioInit(void)
 	tCycleInit(&sin1, SAMPLE_RATE, sinewave, SINE_TABLE_SIZE);
 	tNoiseInit(&noise1, SAMPLE_RATE, &randomNumber, NoiseTypeWhite);
 	tRampInit(&rampFeedback, SAMPLE_RATE, 10.0f, 1);
-	tRampInit(&rampSineFreq, SAMPLE_RATE, 10.0f, 1);
-	tRampInit(&rampDelayFreq, SAMPLE_RATE, 10.0f, 1);
+	tRampInit(&rampSineFreq, SAMPLE_RATE, 20.0f, 1);
+	tRampInit(&rampDelayFreq, SAMPLE_RATE, 20.0f, 1);
 	tHighpassInit(&highpass1, SAMPLE_RATE, 20.0f);
 	tHighpassInit(&highpass2, SAMPLE_RATE, 45.0f);
-	tEnvelopeFollowerInit(&envFollowNoise, 0.05, 0.0f);
-	tEnvelopeFollowerInit(&envFollowSine, 0.05, 0.0f);
+	tEnvelopeFollowerInit(&envFollowNoise, 0.05f, 0.0f);
+	tEnvelopeFollowerInit(&envFollowSine, 0.05f, 0.0f);
+	tEnvelopeFollowerInit(&envFollowTrigOut, 0.01f, 0.97f);
 	tDelayInit(&delay1,delayBuffer1);
 	tSVFInit(&svf1,SAMPLE_RATE,SVFTypeBandpass, 2000, 1.0f);
 	
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); 
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // ADC CS pin goes high to make sure it's not selected
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET); // Other IC CS pin goes high to stop conversion
 	HAL_Delay(100);
 	
 #if I2C1_TEST_ENABLED
 	while(1) {
-		externalDAC_Send();
+		DMA1_externalDACSend();
 		HAL_Delay(100);
 	}
 #endif
@@ -283,7 +293,7 @@ void audioInit(void)
 		
 		if (timer++ > 100000) {
 			toggle = !toggle;
-			setTrigOutLED(toggle);
+			setTrigOut(toggle);
 			x += 2; y += 3;
 			timer = 0;
 		}
@@ -292,8 +302,8 @@ void audioInit(void)
 			
 	}
 #endif
-	DMA1_externalDACInit();
-	HAL_Delay(100);
+	//DMA1_externalDACInit();
+	//HAL_Delay(100);
 	//now to send all the necessary messages to the codec
 	AudioCodec_init();
 	HAL_Delay(100);
@@ -304,11 +314,19 @@ void audioInit(void)
 	//start_Other_IC_Communication();
 	
 	// set up the I2S driver to send audio data to the codec (and retrieve input as well)	
-	//HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&Send_Buffer[0], (uint16_t*)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
-	HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t *)&Send_Buffer[0], (uint16_t *)&Receive_Buffer[0], AUDIO_BUFFER_SIZE);
+	//HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t*)&audioOutBuffer[0], (uint16_t*)&audioInBuffer[0], AUDIO_BUFFER_SIZE);
+	HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t *)&audioOutBuffer[0], (uint16_t *)&audioInBuffer[0], AUDIO_BUFFER_SIZE);
   
-	//readAndWriteOtherChip(dummy1, dummy2);
-	HAL_SPI_TransmitReceive_DMA(&hspi1, IC_tx, IC_rx, IC_BUFFER_SIZE); // removed (uint8_t *) casts before IC_tx and IC_rx
+	// SPI1 Other Chip communication Initial Call
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_RESET); // Other IC CS pin goes high to allow conversion start
+	HAL_Delay(1); 
+	//HAL_SPI_TransmitReceive_DMA(&hspi1, (uint8_t *)IC_tx, (uint8_t *)IC_rx, IC_BUFFER_SIZE); // removed (uint8_t *) casts before IC_tx and IC_rx
+	
+	whichSPI2 = 0;
+	// SPI2 LED Initial Call
+	
+	setXYLED(3,3);
+	
 	
 /*
   while(1)
@@ -344,116 +362,176 @@ uint16_t dacCount1 = 0;
 uint16_t dacCount2 = 0;
 uint16_t dacCount3 = 0;
 uint16_t dacCount4 = 0;
+
+float FM_in; 
 int count = 0;
 void audioTick(uint16_t buffer_offset)
 {
-			uint16_t i = 0;
-			int16_t current_sample = 0;  
+	//communicateWithOtherIC();
+	
+	uint16_t i = 0;
+	int16_t current_sample = 0;  
 
-			getXY_Touchpad();
-			uint8_t led_x =(uint8_t)(NUM_LEDS*((float)myTouchpad[0] * INV_TWO_TO_8));
-			uint8_t led_y = (uint8_t)(NUM_LEDS*((float)myTouchpad[1] * INV_TWO_TO_8));
-			setXYLED(led_x,led_y);
+	if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1)) {
+		getXY_Touchpad();
+	}
+	
+	newDelay = interpolateDelayControl((4096 - (myTouchpad[1] * 16)));
+	rampDelayFreq.setDest(&rampDelayFreq,newDelay);
+	
+	newFreq = ((mtof1[myTouchpad[0] * 16]) * 0.3f/*+ (((FM_in + 1.0f) * 0.5f) * 1000.0f)*/);
+	rampSineFreq.setDest(&rampSineFreq,newFreq);
+
+	XYLED[0] = 7 - (uint8_t)(myTouchpad[0] * INV_TWO_TO_5);
+	XYLED[1] = 7 - (uint8_t)(myTouchpad[1] * INV_TWO_TO_5);
+	
+	if (XY_Tx_Ready)
+	{
+		XY_Tx_Ready = 0;
+		setXYLED(XYLED[0],XYLED[1]);
+	}
 	
 
-			for (i = 0; i < (HALF_BUFFER_SIZE); i++)
-			{
-				if ((i & 1) == 0)
-				{
-					current_sample = (int16_t)(audioProcess((float) (Receive_Buffer[HALF_BUFFER_SIZE + i] * INV_TWO_TO_15)) * TWO_TO_15);
-				}
-				Send_Buffer[buffer_offset + i] = current_sample;
-			}
-			readExternalADC();
+	for (i = 0; i < (HALF_BUFFER_SIZE); i++)
+	{
+		if ((i & 1) == 0) {
+			current_sample = (int16_t)(audioProcess((float) (audioInBuffer[buffer_offset + i] * INV_TWO_TO_15)) * TWO_TO_15);
+		} else {
+			FM_in = (float)(audioInBuffer[buffer_offset + i] * INV_TWO_TO_15);
+		}
+		audioOutBuffer[buffer_offset + i] = current_sample;
+	}
+	
+	if (ADC_Tx_Ready) 
+	{
+		ADC_Tx_Ready = 0;
+		readExternalADC();
+	}
+	
 }
 
-#define DACOUT 1
-uint8_t newcount = 0;
+#define DAC_OUT 1
+#define TRIG_OUT 0
+uint16_t newcount = 0;
+float sinefreq, delayfreq;
+typedef enum BOOL {
+	FALSE = 0,
+	TRUE
+} BOOL;
+
+#define NUM_SAMPS_BETWEEN_TRIG 2048
+uint32_t sampSinceTrig = 0;
+uint16_t prevValue = 0;
+
+//uint16_t dacVref =  0x90;
+
+float noiseToEnv, sineToEnv, envSine1;
+uint16_t envIntNoise, envIntSine;
+uint16_t envNoise1;
+	float sineEnv, noiseEnv;
 float audioProcess(float audioIn) {
 	
+	
+	
+	// UPDATE NOISE FILTER Q and FREQ
 	float Q = 14.9f * (ADC_values[ControlParameterThreshold] * INV_TWO_TO_12) + 0.1f;
 	noiseFilterGain = 0.1f*(1.0f - (Q/15.0f))+0.025f;
 	svf1.setQ(&svf1, Q);
 	svf1.setFreq(&svf1, ADC_values[ControlParameterNoiseDecay]);
 
-	envFollowNoise.decayCoeff(&envFollowNoise,adc1[ADC_values[ControlParameterNoiseDecay]]);
-  envFollowSine.decayCoeff(&envFollowSine,adc1[ADC_values[ControlParameterSineDecay]]); 	
-	
-	//set frequency of sine and delay
-	sin1.freq(&sin1, mtof1[(uint16_t)(smoothedParams[ControlParameterFrequency] * 4096.0f)]);
-	
-	//setDelay(smoothedParams[ControlParameterDelay]);
-	delay1.setDelay(&delay1, smoothedParams[ControlParameterDelay]);
-	
-	
+	// UPDATE ATTACK THRESHOLD
 	float newAttackThresh = ((float)ADC_values[ControlParameterThreshold]) * INV_TWO_TO_12 * 0.2f;
 	envFollowNoise.attackThresh(&envFollowNoise,newAttackThresh);
-  envFollowSine.attackThresh(&envFollowSine,newAttackThresh); 	
+  envFollowSine.attackThresh(&envFollowSine,newAttackThresh); 
 	
+	// SET DECAY COEFF
+	envFollowNoise.decayCoeff(&envFollowNoise,adc1[ADC_values[ControlParameterNoiseDecay]]);
+  envFollowSine.decayCoeff(&envFollowSine,adc1[ADC_values[ControlParameterFrequency]]);
 	
+	// UPDATE SINE FREQ
+	sin1.freq(&sin1, rampSineFreq.tick(&rampSineFreq));
 	
-	float sineEnv, noiseEnv;
+	// UPDATE DELAY PERIOD
+	smoothedParams[ControlParameterDelay] = rampDelayFreq.tick(&rampDelayFreq);
+	//delayfreq = 1.0f/(((FM_in + 1.0f) * 0.5f) * 1000.0f); //trying FM delay period
+	delay1.setDelay(&delay1, smoothedParams[ControlParameterDelay]);
+	
 	// MIX
+
 	float sample = 0.8f * audioIn;
 	if (ADC_values[ControlParameterFeedback] > 5) {
 		sample += (ksGain * ksTick(audioIn));
 	}
-	if (ADC_values[ControlParameterSineDecay] > 5) {
-		
+	if (ADC_values[ControlParameterFrequency] > 5) {
+
 		sineEnv = envFollowSine.tick(&envFollowSine,audioIn); 
 		sample += (sineGain * sin1.tick(&sin1) * sineEnv);
 		
 	}
-	sample *= .05f;
+	sample *= .1f;
 	if (ADC_values[ControlParameterNoiseDecay] > 5) {
-		
+
 		noiseEnv = envFollowNoise.tick(&envFollowNoise,audioIn); 
-		sample += (noiseFilterGain * svf1.tick(&svf1, noise1.tick(&noise1)) * envFollowNoise.tick(&envFollowNoise,audioIn));
+		sample += noiseGain * (noiseFilterGain * svf1.tick(&svf1, noise1.tick(&noise1)) * envFollowNoise.tick(&envFollowNoise,audioIn));
 	}
+	sample *= masterGain;
+  sample = highpass1.tick(&highpass1, shaper1[(uint16_t)((sample+1.0f)*0.5f * TWO_TO_15)]);
 	
-#if DACOUT
+	#if DAC_OUT
 	if (++newcount == 4) {
 		newcount = 0;
-		externalDACOutputBuffer[0] = 0x50;
+		
+		//externalDACOutputBuffer[0] = 0x50;
 	
 		uint16_t sineEnvToDAC = (uint16_t)(sineEnv * TWO_TO_12);
-		externalDACOutputBuffer[1] = sineEnvToDAC >> 8; 
-		externalDACOutputBuffer[2] = (sineEnvToDAC & 255);
+		externalDACOutputBuffer[0] = (sineEnvToDAC >> 8); 
+		externalDACOutputBuffer[1] = (sineEnvToDAC & 255);
 	
 		uint16_t noiseEnvToDAC = (uint16_t)(noiseEnv * TWO_TO_12);
-		externalDACOutputBuffer[3] = noiseEnvToDAC >> 8; 
-		externalDACOutputBuffer[4] = (noiseEnvToDAC & 255); 
+		externalDACOutputBuffer[2] = (noiseEnvToDAC >> 8); 
+		externalDACOutputBuffer[3] = (noiseEnvToDAC & 255); 
 	
-		dacCount3+=3;
-		if (dacCount3 >= 4096) {
-			dacCount3 = 0;
-		}
-	
-		dacCount4++;
-		if (dacCount4 >= 4096) {
-			dacCount4 = 0;
-		}
-	
-		externalDACOutputBuffer[5] = (dacCount3 >> 8); 
-		externalDACOutputBuffer[6] = (dacCount3 & 255);
+		externalDACOutputBuffer[4] = ((myTouchpad[0] * 16) >> 8);
+		externalDACOutputBuffer[5] = (myTouchpad[0] * 16) & 255;
 
-		externalDACOutputBuffer[7] = (dacCount4 >> 8); 
-		externalDACOutputBuffer[8] = (dacCount4 & 255);
+		externalDACOutputBuffer[6] = ((myTouchpad[1] * 16) >> 8);
+		externalDACOutputBuffer[7] = (myTouchpad[1] * 16) & 255;
 	
 		DMA1_externalDACSend();
 	}
 #endif
-	sample *= masterGain;
-  sample = highpass1.tick(&highpass1, shaper1[(uint16_t)((sample+1.0f)*0.5f * TWO_TO_15)]);
-
+	
 	//update Parameters
 	smoothedParams[ControlParameterFeedback] = rampFeedback.tick(&rampFeedback);
-	smoothedParams[ControlParameterFrequency] = rampSineFreq.tick(&rampSineFreq);
-	smoothedParams[ControlParameterDelay] = rampDelayFreq.tick(&rampDelayFreq);
+	//smoothedParams[ControlParameterFrequency] = rampSineFreq.tick(&rampSineFreq);
+	//smoothedParams[ControlParameterDelay] = rampDelayFreq.tick(&rampDelayFreq);
+	
+#if TRIG_OUT
+	
+	// TRIGGER
+	float peakEnv = envFollowTrigOut.tick(&envFollowTrigOut,audioIn);
+	//setTrigOut(peakEnv > 0.05f);
+	
+	if (sampSinceTrig > NUM_SAMPS_BETWEEN_TRIG) {
+		
+		if (peakEnv > 0.01f) {
+			  setTrigOut(1);
+				sampSinceTrig = 0;
+		} 	
+	} else {
+		
+		sampSinceTrig++;
+	}
+	
+	if (peakEnv < 0.005f) { 
+			setTrigOut(0);
+	}
+#endif
+	
+
 	
 	return sample;
 }
-
 
 void DMA1_externalDACSend(void) {
 	// Start communication with external DAC
@@ -464,20 +542,18 @@ void DMA1_externalDACSend(void) {
 void DMA1_externalDACInit(void) {
 	// Start communication with external DAC
 	//HAL_I2C_Master_Transmit_DMA(&hi2c1, 192, (uint8_t *)&externalDACOutputBufferTX[0], NUM_BYTES_TO_SEND);
-
-}
-
-
-void DMA1_TransferCpltCallback (DMA_HandleTypeDef *hdma) {
-	for (int i = 5; i < 9; i++) {
-		externalDACOutputBufferTX[i] = externalDACOutputBuffer[i];
-	}
-}
-
-void DMA1_HalfTransferCpltCallback (DMA_HandleTypeDef *hdma) {
-	for (int i = 0; i < 5; i++) {
-		externalDACOutputBufferTX[i] = externalDACOutputBuffer[i];
-	}
+	
+	//Send a general call to the DAC chip (using i2c address 0 for "general call") that tells it to reset
+	HAL_I2C_Master_Transmit_DMA(&hi2c1, 0, I2CReset_buffer, 1);
+	HAL_Delay(10);
+	//Send initial commands to the CV DAC channels to set their gain and vref stuff correctly
+	HAL_I2C_Master_Transmit_DMA(&hi2c1, 192, I2C_init_command, 3);
+	I2C_init_command[0] = 0x5A;
+	HAL_I2C_Master_Transmit_DMA(&hi2c1, 192, I2C_init_command, 3);
+	I2C_init_command[0] = 0x5C;
+	HAL_I2C_Master_Transmit_DMA(&hi2c1, 192, I2C_init_command, 3);
+	I2C_init_command[0] = 0x5E;
+	HAL_I2C_Master_Transmit_DMA(&hi2c1, 192, I2C_init_command, 3);
 }
 
 float clip(float min, float val, float max) {
@@ -514,34 +590,31 @@ void readExternalADC(void)
 	uint16_t knobval12bit;
 	uint16_t knobsendbyte;
 	uint8_t ADC_out[2];
+	
+	knobnum = ADC_in[0] >> 4;
+	knobval12bit = (ADC_in[1] | ((ADC_in[0] & 15) << 8));
+	ADC_values[knobnum] = knobval12bit;
+	
+	// write to ADC chip (asking for data on next channel)
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); // ADC CS pin goes low to initiate conversion
 
 	//create the word to send to the knob ADC chips (telling the ADC which channel to scan this time around)
 	knobsendbyte = 6208 + (whichKnob << 7);
 	ADC_out[0] = knobsendbyte >> 8;
 	ADC_out[1] = knobsendbyte & 255;
 	
-	// write to ADC chip (asking for data on next channel)
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); // ADC CS pin goes low to initiate conversion
-	//for(int j = 0; j < 5000; j++);
-
-	HAL_SPI_TransmitReceive(&hspi2, (uint8_t *)ADC_out, (uint8_t *)ADC_in, ADC_BUFFERSIZE, TIMEOUT);
-	//for(int j = 0; j < 5000; j++);
-
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // ADC CS pin goes high
-
-	knobnum = ADC_in[0] >> 4;
-	knobval12bit = (ADC_in[1] | ((ADC_in[0] & 15) << 8));
-	ADC_values[knobnum] = knobval12bit;
+	hspi1.State = HAL_SPI_STATE_READY;
 	
+	//for(int j = 0; j < 10; j++);
+	
+	HAL_SPI_TransmitReceive_DMA(&hspi2, (uint8_t *)ADC_out, (uint8_t *)ADC_in, ADC_BUFFERSIZE);
+		
+	//for(int j = 0; j < 5000; j++);
+
 	if (knobnum == ControlParameterFeedback){
 		
 		newFeedback = interpolateFeedback(ADC_values[ControlParameterFeedback]);
 		rampFeedback.setDest(&rampFeedback,newFeedback);
-		
-	} else if (knobnum == ControlParameterDelay) {
-		
-		newDelay = interpolateDelayControl((4096 - ADC_values[ControlParameterDelay]));
-		rampDelayFreq.setDest(&rampDelayFreq,newDelay);
 		
 	} else if (knobnum == ControlParameterFrequency) {
 		
@@ -559,17 +632,17 @@ void readExternalADC(void)
 float interpolateDelayControl(float raw_data)
 {
 	float scaled_raw = raw_data * INV_TWO_TO_12;
-	if (scaled_raw < 0.2f)
+	if (scaled_raw < 0.4f)
 	{
-		return (DelayLookup[0] + ((DelayLookup[1] - DelayLookup[0]) * (scaled_raw * 5.f)));
+		return (DelayLookup[0] + ((DelayLookup[1] - DelayLookup[0]) * (scaled_raw * 2.5f)));
 	}
-	else if (scaled_raw < 0.6f)
+	else if (scaled_raw < 0.8f)
 	{
-		return (DelayLookup[1] + ((DelayLookup[2] - DelayLookup[1]) * ((scaled_raw - 0.2f) * 2.5f)));
+		return (DelayLookup[1] + ((DelayLookup[2] - DelayLookup[1]) * ((scaled_raw - 0.4f) * 2.5f)));
 	}
 	else
 	{
-		return (DelayLookup[2] + ((DelayLookup[3] - DelayLookup[2]) * ((scaled_raw - 0.6f) * 2.5f)));
+		return (DelayLookup[2] + ((DelayLookup[3] - DelayLookup[2]) * ((scaled_raw - 0.8f) * 5.0f)));
 	}	
 }
 float out;
@@ -688,12 +761,9 @@ void Write7SegWave(uint8_t value)
 // program other chip to recieve 4 8-bit bytes and send them right back
 
 
-uint16_t main_counter = 0;
-int16_t mycounter16 = 0;
-int16_t adc_1 = 0;
+int16_t mycounter16Out = 0;
 int16_t mycounter16In = 0;
 int16_t prevcounterOut = 0;
-uint8_t mycounter = 0;
 uint8_t stopME = 0;
 
 
@@ -719,15 +789,12 @@ int16_t readAndWriteOtherChip(int16_t Audio_In, uint16_t Buffer_Index)
 		mycounter++;
 	}
 */
-if (stopME == 0)
-{
-		adc_1 = (int16_t) (ADC_values[0]);
-		WRITE_INT16_AS_BYTES(0,mycounter16);
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_RESET); // Other_IC_CS pin goes low to start conversion
-		//HAL_SPI_TransmitReceive_DMA(&hspi1, (uint8_t *)IC_tx, (uint8_t *)IC_rx, IC_BUFFER_SIZE);
-		//mycounter16In = READ_BYTES_AS_INT16(2);
-	  
-}
+	if (stopME == 0) {
+			WRITE_INT16_AS_BYTES(0,mycounter16Out);
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_RESET); // Other_IC_CS pin goes low to start conversion
+			//HAL_SPI_TransmitReceive_DMA(&hspi1, (uint8_t *)IC_tx, (uint8_t *)IC_rx, IC_BUFFER_SIZE);
+			//mycounter16In = READ_BYTES_AS_INT16(2);
+	}
 	return 0;
 	
 	//mycounter16++;
@@ -772,25 +839,25 @@ if (stopME == 0)
 
 
 
-void sendBytesToOtherIC(uint8_t whichByte, uint8_t data) 
+void writeOtherICBuffer(uint8_t whichByte, uint8_t data) 
 {
 	IC_tx[whichByte] = data; 
 }
 
-uint8_t readBytesFromOtherIC(uint8_t startingByte)
+uint8_t readOtherICBuffer(uint8_t startingByte)
 {
 	return IC_rx[startingByte];
 }
 
 void WRITE_INT16_AS_BYTES(uint8_t byteNum, int16_t data) { 
 	
-      sendBytesToOtherIC(byteNum, (data >> 8)); 
-	    sendBytesToOtherIC((byteNum + 1), (data & 255)); 
+      writeOtherICBuffer(byteNum, (data >> 8)); 
+	    writeOtherICBuffer((byteNum + 1), (data & 255)); 
 }
 
 int16_t READ_BYTES_AS_INT16(uint8_t byteNum) { 
 
-   int16_t data = ((readBytesFromOtherIC(byteNum) << 8) + (readBytesFromOtherIC(byteNum + 1) & 255));
+   int16_t data = ((readOtherICBuffer(byteNum) << 8) + (readOtherICBuffer(byteNum + 1) & 255));
    return(data); 
 }
 
@@ -798,7 +865,7 @@ void WRITE_FLOAT16_AS_BYTES(uint8_t byteNum, float data) {
    int i;
 
    for (i = 0; i < 2; i++) 
-      sendBytesToOtherIC(i + byteNum, *((uint8_t*)&data + i + 2) ) ; 
+      writeOtherICBuffer(i + byteNum, *((uint8_t*)&data + i + 2) ) ; 
 }
 
 float READ_BYTES_AS_FLOAT16(uint8_t byteNum) { 
@@ -806,7 +873,7 @@ float READ_BYTES_AS_FLOAT16(uint8_t byteNum) {
    float data;
 
    for (i = 2; i < 2; i++) 
-      *((uint8_t*)&data + i + 2) = readBytesFromOtherIC(i + byteNum);
+      *((uint8_t*)&data + i + 2) = readOtherICBuffer(i + byteNum);
 
    return(data); 
 }
@@ -854,45 +921,112 @@ void HAL_SPI_TxRxHalfCpltCallback(SPI_HandleTypeDef *hspi)
 	}
 	*/
 }
+#if 0
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
+	if (hspi == &hspi2) {
+		
+		if (!whichSPI2) {
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET); // CAT4016 Latch pin goes high to latch data
+			ADC_Tx_Ready = 1;
+			whichSPI2 = 1;
+		} else {
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // ADC CS pin goes high
+			XY_Tx_Ready = 1;
+			whichSPI2 = 0;
+		}
+		
+		//readExternalADC();
+	}
+}
+#endif
 
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 {
 	
+	if(hspi == &hspi1) {
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET); // Other IC CS pin goes high to stop conversion
+	} else if (hspi == &hspi2) { 
+		if (!whichSPI2) {
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET); // CAT4016 Latch pin goes back low to reset it
+			for (int i =0; i < 5; i++);
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET); // CAT4016 Latch pin goes high to latch data
+			ADC_Tx_Ready = 1;
+			whichSPI2 = 1;
+		} else {
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // ADC CS pin goes high
+			XY_Tx_Ready = 1;
+			whichSPI2 = 0;
+		}
+	} else {
+			
+	}
+#if 0
 	//if it's SPI1, that's the other stm32f4 IC, ready for new data.
 	if(hspi == &hspi1)
 	{
-			int16_t dummy1 = 0;
-     uint16_t dummy2 = 0;	
-		//HAL_SPI_TransmitReceive(&hspi1, (uint8_t *)IC_tx, (uint8_t *)IC_rx, IC_BUFFER_SIZE, IC_TIMEOUT);
-		//nothing should be necessary, since the buffer should be circular
-		//HAL_SPI_TransmitReceive_DMA(&hspi1, (uint8_t *)IC_tx, (uint8_t *)IC_rx, IC_BUFFER_SIZE);
-	hspi1.State = HAL_SPI_STATE_READY;	
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET); // Other IC CS pin goes high to stop conversion
+		//pullUpOtherChipCS();
+		hspi1.State = HAL_SPI_STATE_READY;
+			
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET); // Other IC CS pin goes high to stop conversion
 		
-		mycounter16In = READ_BYTES_AS_INT16(0);
+		mycounter16In = READ_BYTES_AS_INT16(0); ///this is signed 16 int
 		//Write7SegWave(mycounter16In);
 		
 		if (mycounter16In != prevcounterOut)
 		{
 			//stopME = 1;
 		}
-		prevcounterOut = mycounter16; 
-		mycounter16++;
+		prevcounterOut = mycounter16Out; 
+		mycounter16Out++;
 		
-      //OtherICBufferIndexNum = 0;
-	    //start_Other_IC_Communication();
-		readAndWriteOtherChip(dummy1, dummy2);
+    //OtherICBufferIndexNum = 0;
+	  //start_Other_IC_Communication();
+		
+		WRITE_INT16_AS_BYTES(0,mycounter16Out);
+		
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_RESET); // Other_IC_CS pin goes low to start conversion
+		
+		HAL_SPI_TransmitReceive_DMA(&hspi1, (uint8_t *)IC_tx, (uint8_t *)IC_rx, IC_BUFFER_SIZE);
+		
+	
 		//for (int i = 0; i < HALF_IC_BUFFER_SIZE; i++)
 		//{
 		//	IC_tx[i + HALF_IC_BUFFER_SIZE] = ICbufferTx[i + HALF_IC_BUFFER_SIZE];
 		//}
 	}
-	if(hspi == &hspi2)
-	{
-		//HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // ADC CS pin goes high
-		readExternalADC();
-	}
+
+#endif
+}
+
+void communicateWithOtherIC(void) {
+	//pullUpOtherChipCS();
+		hspi1.State = HAL_SPI_STATE_READY;
+			
+		//HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET); // Other IC CS pin goes high to stop conversion
+		
+		mycounter16In = READ_BYTES_AS_INT16(0); ///this is signed 16 int
+		//Write7SegWave(mycounter16In);
+		
+		if (mycounter16In != prevcounterOut)
+		{
+			//stopME = 1;
+		}
+		prevcounterOut = mycounter16Out; 
+		mycounter16Out++;
+		
+    //OtherICBufferIndexNum = 0;
+	  //start_Other_IC_Communication();
+		
+		WRITE_INT16_AS_BYTES(0,mycounter16Out);
+		
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_RESET); // Other_IC_CS pin goes low to start conversion
+		
+		for (int i = 0; i < 10; i++) {
+			
+		}
+		
+		HAL_SPI_TransmitReceive_DMA(&hspi1, (uint8_t *)IC_tx, (uint8_t *)IC_rx, IC_BUFFER_SIZE);
 }
 
 
@@ -915,7 +1049,7 @@ void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
 void getXY_Touchpad(void) {
   // retreive values from the XY touchpad
 	// I2C address = 9, 1000k, 
-	//HAL_I2C_Master_Receive(&hi2c1, 18, myTouchpad, i2cDataSize2, IC_TIMEOUT);
+	HAL_I2C_Master_Receive_DMA(&hi2c1, 18, myTouchpad, i2cDataSize2);
 }
 
  void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)

@@ -5,8 +5,9 @@
 #include "main.h"
 
 #define SINE_TABLE_SIZE 2048
-#define SHAPER1_TABLE_SIZE 65535
-#define TANH1_TABLE_SIZE 65535
+#define SHAPER1_TABLE_SIZE 65536
+#define ENVPOW_TABLE_SIZE 65536
+#define TANH1_TABLE_SIZE 65536
 #define ADC1_TABLE_SIZE 4096
 #define MTOF1_TABLE_SIZE 4096
 #define FB_TABLE_SIZE 4096
@@ -22,6 +23,7 @@ extern const float FB7[FB_TABLE_SIZE];
 extern const float FB8[FB_TABLE_SIZE];
 
 // mtof lookup table based on input range [0.0,1.0) in 4096 increments - midi frequency values scaled between m25 and m134 (as done in previous code)
+extern const float envelope_pow[ENVPOW_TABLE_SIZE];
 extern const float filtertan[FILTERTAN_TABLE_SIZE];
 extern const float mtof1[MTOF1_TABLE_SIZE];
 extern const float adc1[ADC1_TABLE_SIZE];

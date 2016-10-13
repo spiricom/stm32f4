@@ -106,8 +106,8 @@ int main(void)
      DMA1 RX S3,C0
      DMA1 TX S4,C0
 **********************/
-	hdma_i2c1_tx.XferCpltCallback = &DMA1_TransferCpltCallback;
-	hdma_i2c1_tx.XferHalfCpltCallback = &DMA1_HalfTransferCpltCallback;
+	//hdma_i2c1_tx.XferCpltCallback = &DMA1_TransferCpltCallback;
+	//hdma_i2c1_tx.XferHalfCpltCallback = &DMA1_HalfTransferCpltCallback;
 
   MX_DMA_Init();
   MX_I2C1_Init();
@@ -122,7 +122,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // ADC CS pin should start high
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET); //CAT4016 Blank pin should always be low
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET); // CAT4016 Latch pin should start low
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET); // CAT4016 Latch pin should start high ?
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET); // Other STM32F4 IC CS pin (SYNTH1) should start high
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); //Start SPI1 SCK low (why doesn't this work?)
 	

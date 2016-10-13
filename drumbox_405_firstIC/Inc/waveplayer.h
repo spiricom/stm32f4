@@ -66,6 +66,8 @@ typedef enum
 
 #define TWO_TO_8 256.f
 #define INV_TWO_TO_8 1.f/TWO_TO_8
+#define TWO_TO_5 32.f
+#define INV_TWO_TO_5 1.0f/TWO_TO_5
 #define TWO_TO_12 4096.f
 #define INV_TWO_TO_12 1.f/TWO_TO_12
 #define TWO_TO_15 32768.f
