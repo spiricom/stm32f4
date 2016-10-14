@@ -36,6 +36,8 @@ This is the Snyderphonics DrumBox synthesis code.
 #define TIMEOUT 10
 #define NUM_LEDS 8
 
+#define USE_TOP_RIGHT_FOR_NOISE_DECAY 0
+
 #define IC_BUFFER_SIZE 4
 #define HALF_IC_BUFFER_SIZE (IC_BUFFER_SIZE / 2)
 #define IC_TIMEOUT 200
@@ -69,7 +71,6 @@ extern DMA_HandleTypeDef hdma_spi2_rx;
 extern SPI_HandleTypeDef hspi1;
 extern SPI_HandleTypeDef hspi2;
 
-
 // IC communication variables
 uint16_t i2cDataSize2 = 2;
 uint8_t myTouchpad[2];
@@ -82,7 +83,6 @@ uint8_t ICbufferRx[IC_BUFFER_SIZE*10];
 uint8_t I2CReset_buffer[1] = {0x06};
 uint8_t I2C_init_command[3] = {0x58, 0x90, 0x00};
 uint16_t ADC_values[NUM_ADC_VALUES];
-
 
 // 0 = ADC, 1 = LED
 uint8_t whichSPI2 = 0;
@@ -101,6 +101,7 @@ tNoise noise1;
 tRamp rampFeedback;
 tRamp rampSineFreq;
 tRamp rampDelayFreq;
+tRamp rampKSGain; 
 
 // Highpass
 tHighpass highpass1;
@@ -263,11 +264,12 @@ void audioInit(void)
 	tRampInit(&rampFeedback, SAMPLE_RATE, 10.0f, 1);
 	tRampInit(&rampSineFreq, SAMPLE_RATE, 20.0f, 1);
 	tRampInit(&rampDelayFreq, SAMPLE_RATE, 20.0f, 1);
+	tRampInit(&rampKSGain, SAMPLE_RATE, 5.0f, 1);
 	tHighpassInit(&highpass1, SAMPLE_RATE, 20.0f);
 	tHighpassInit(&highpass2, SAMPLE_RATE, 45.0f);
-	tEnvelopeFollowerInit(&envFollowNoise, 0.05f, 0.0f);
-	tEnvelopeFollowerInit(&envFollowSine, 0.05f, 0.0f);
-	tEnvelopeFollowerInit(&envFollowTrigOut, 0.01f, 0.97f);
+	tEnvelopeFollowerInit(&envFollowNoise, 0.001f, 0.0f);
+	tEnvelopeFollowerInit(&envFollowSine, 0.001f, 0.0f);
+	tEnvelopeFollowerInit(&envFollowTrigOut, 0.001f, 0.97f);
 	tDelayInit(&delay1,delayBuffer1);
 	tSVFInit(&svf1,SAMPLE_RATE,SVFTypeBandpass, 2000, 1.0f);
 	
@@ -379,7 +381,7 @@ void audioTick(uint16_t buffer_offset)
 	newDelay = interpolateDelayControl((4096 - (myTouchpad[1] * 16)));
 	rampDelayFreq.setDest(&rampDelayFreq,newDelay);
 	
-	newFreq = ((mtof1[myTouchpad[0] * 16]) * 0.3f/*+ (((FM_in + 1.0f) * 0.5f) * 1000.0f)*/);
+	newFreq = ((mtof1[myTouchpad[0] * 16]) * 0.2f);
 	rampSineFreq.setDest(&rampSineFreq,newFreq);
 
 	XYLED[0] = 7 - (uint8_t)(myTouchpad[0] * INV_TWO_TO_5);
@@ -428,33 +430,39 @@ uint16_t prevValue = 0;
 float noiseToEnv, sineToEnv, envSine1;
 uint16_t envIntNoise, envIntSine;
 uint16_t envNoise1;
-	float sineEnv, noiseEnv;
+float sineEnv, noiseEnv;
+
 float audioProcess(float audioIn) {
 	
 	
-	
 	// UPDATE NOISE FILTER Q and FREQ
-	float Q = 14.9f * (ADC_values[ControlParameterThreshold] * INV_TWO_TO_12) + 0.1f;
+	float Q = 14.9f * (ADC_values[ControlParameterNoiseWidth] * INV_TWO_TO_12) + 0.1f;
 	noiseFilterGain = 0.1f*(1.0f - (Q/15.0f))+0.025f;
 	svf1.setQ(&svf1, Q);
-	svf1.setFreq(&svf1, ADC_values[ControlParameterNoiseDecay]);
-
-	// UPDATE ATTACK THRESHOLD
-	float newAttackThresh = ((float)ADC_values[ControlParameterThreshold]) * INV_TWO_TO_12 * 0.2f;
-	envFollowNoise.attackThresh(&envFollowNoise,newAttackThresh);
-  envFollowSine.attackThresh(&envFollowSine,newAttackThresh); 
+	svf1.setFreq(&svf1, ADC_values[ControlParameterNoiseCutoff]); 
 	
-	// SET DECAY COEFF
+	// SET NOISE DECAY COEFF
+#if USE_TOP_RIGHT_FOR_NOISE_DECAY
 	envFollowNoise.decayCoeff(&envFollowNoise,adc1[ADC_values[ControlParameterNoiseDecay]]);
-  envFollowSine.decayCoeff(&envFollowSine,adc1[ADC_values[ControlParameterFrequency]]);
+#else
+	envFollowNoise.decayCoeff(&envFollowNoise,adc1[ADC_values[ControlParameterDive]]);
+#endif
+	
+	// SET SINE DECAY COEFF
+  envFollowSine.decayCoeff(&envFollowSine,adc1[ADC_values[ControlParameterSineDecay]]);
+
+	// UPDATE FEEDBACK 
+	newFeedback = interpolateFeedback(ADC_values[ControlParameterFeedback]);
+	rampFeedback.setDest(&rampFeedback,newFeedback);
+	smoothedParams[SmoothedParameterFeedback] = rampFeedback.tick(&rampFeedback);
 	
 	// UPDATE SINE FREQ
-	sin1.freq(&sin1, rampSineFreq.tick(&rampSineFreq));
+	sin1.freq(&sin1, rampSineFreq.tick(&rampSineFreq) + (FM_in * 1000.0f));
 	
 	// UPDATE DELAY PERIOD
-	smoothedParams[ControlParameterDelay] = rampDelayFreq.tick(&rampDelayFreq);
+	smoothedParams[SmoothedParameterDelay] = rampDelayFreq.tick(&rampDelayFreq);
 	//delayfreq = 1.0f/(((FM_in + 1.0f) * 0.5f) * 1000.0f); //trying FM delay period
-	delay1.setDelay(&delay1, smoothedParams[ControlParameterDelay]);
+	delay1.setDelay(&delay1, smoothedParams[SmoothedParameterDelay]);
 	
 	// MIX
 
@@ -462,22 +470,31 @@ float audioProcess(float audioIn) {
 	if (ADC_values[ControlParameterFeedback] > 5) {
 		sample += (ksGain * ksTick(audioIn));
 	}
-	if (ADC_values[ControlParameterFrequency] > 5) {
+	if (ADC_values[ControlParameterSineDecay] > 5) {
 
 		sineEnv = envFollowSine.tick(&envFollowSine,audioIn); 
 		sample += (sineGain * sin1.tick(&sin1) * sineEnv);
 		
 	}
 	sample *= .1f;
+	
+#if USE_TOP_RIGHT_FOR_NOISE_DECAY
 	if (ADC_values[ControlParameterNoiseDecay] > 5) {
 
 		noiseEnv = envFollowNoise.tick(&envFollowNoise,audioIn); 
 		sample += noiseGain * (noiseFilterGain * svf1.tick(&svf1, noise1.tick(&noise1)) * envFollowNoise.tick(&envFollowNoise,audioIn));
 	}
+#else 
+	if (ADC_values[ControlParameterDive] > 5) {
+
+		noiseEnv = envFollowNoise.tick(&envFollowNoise,audioIn); 
+		sample += noiseGain * (noiseFilterGain * svf1.tick(&svf1, noise1.tick(&noise1)) * envFollowNoise.tick(&envFollowNoise,audioIn));
+	}
+#endif
+	
 	sample *= masterGain;
   sample = highpass1.tick(&highpass1, shaper1[(uint16_t)((sample+1.0f)*0.5f * TWO_TO_15)]);
 	
-	#if DAC_OUT
 	if (++newcount == 4) {
 		newcount = 0;
 		
@@ -499,13 +516,7 @@ float audioProcess(float audioIn) {
 	
 		DMA1_externalDACSend();
 	}
-#endif
-	
-	//update Parameters
-	smoothedParams[ControlParameterFeedback] = rampFeedback.tick(&rampFeedback);
-	//smoothedParams[ControlParameterFrequency] = rampSineFreq.tick(&rampSineFreq);
-	//smoothedParams[ControlParameterDelay] = rampDelayFreq.tick(&rampDelayFreq);
-	
+
 #if TRIG_OUT
 	
 	// TRIGGER
@@ -569,9 +580,9 @@ float clip(float min, float val, float max) {
 
 float ksTick(float noise_in)
 {
-		float temp_sample;
+		float temp_sample, out, gain;
 	  
-		temp_sample = noise_in + (feedbacksamp * smoothedParams[ControlParameterFeedback]);
+		temp_sample = noise_in + (feedbacksamp * smoothedParams[SmoothedParameterFeedback]);
 		
 		//feedbacksamp = delayTick(temp_sample);
 		feedbacksamp = delay1.tick(&delay1, temp_sample);
@@ -580,7 +591,15 @@ float ksTick(float noise_in)
 		m_output0 = 0.5f * m_input1 + 0.5f * feedbacksamp;
 		m_input1 = feedbacksamp;
 		feedbacksamp = clip(-1.0f,highpass2.tick(&highpass2,m_output0),1.0f);
-		return shaper1[(uint16_t)(((feedbacksamp + 1.0f) * 0.5f) * (TWO_TO_16-1))];
+		if (feedbacksamp < 0.001f) {
+			rampKSGain.setDest(&rampKSGain, 0.0f);
+		} 
+		if (feedbacksamp > 0.0015f) {
+			rampKSGain.setDest(&rampKSGain, 1.0f);
+		}
+		gain = rampKSGain.tick(&rampKSGain);
+		out = gain * shaper1[(uint16_t)(((feedbacksamp + 1.0f) * 0.5f) * (TWO_TO_16-1))];
+		return out;
 }
 
 
@@ -611,18 +630,13 @@ void readExternalADC(void)
 		
 	//for(int j = 0; j < 5000; j++);
 
+/*
 	if (knobnum == ControlParameterFeedback){
 		
 		newFeedback = interpolateFeedback(ADC_values[ControlParameterFeedback]);
 		rampFeedback.setDest(&rampFeedback,newFeedback);
-		
-	} else if (knobnum == ControlParameterFrequency) {
-		
-		newFreq =  (ADC_values[ControlParameterFrequency] * INV_TWO_TO_12) /* * (ADC_values[0] * INV_TWO_TO_12)*/; 
-		rampSineFreq.setDest(&rampSineFreq,newFreq);
-		
-	}
-
+	} 
+*/
 	if (++whichKnob >= NUM_KNOBS)
 	{
 		whichKnob = 0;
@@ -652,7 +666,7 @@ float w1,w2,range;
 float interpolateFeedback(uint16_t idx) {
 	
 	index1 = idx;
-	float delayPeriod = (smoothedParams[ControlParameterDelay] * INV_SAMPLE_RATE);
+	float delayPeriod = (smoothedParams[SmoothedParameterDelay] * INV_SAMPLE_RATE);
 	delPer = delayPeriod;
 	
 	

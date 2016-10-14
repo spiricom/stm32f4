@@ -1,14 +1,21 @@
 #include "stdint.h"
 
 typedef enum ControlParameterType {
-	ControlParameterDelay = 0,
-	ControlParameterFrequency,
-	ControlParameterFeedback,
-	ControlParameterThreshold,
+	ControlParameterFeedback = 0,
+	ControlParameterDive,
 	ControlParameterSineDecay,
+	ControlParameterNoiseWidth,
 	ControlParameterNoiseDecay,
-	ControlParamaterNil,
-} ControlParamaterType;
+	ControlParameterNoiseCutoff,
+	ControlParameterNil,
+} ControlParameterType;
+
+typedef enum SmoothedParameterType {
+	SmoothedParameterDelay= 0,
+	SmoothedParameterSineFreq,
+	SmoothedParameterFeedback,
+	SmoothedParameterNil,
+} SmoothedParameterType;
 
 /* Ramp */
 typedef struct _tRamp {
