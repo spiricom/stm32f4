@@ -73,6 +73,7 @@ typedef enum
 #define TWO_TO_15 32768.f
 #define TWO_TO_16 65536.f
 #define INV_TWO_TO_15 1.f/TWO_TO_15
+#define TWO_TO_16_MINUS_ONE 65535.0f
 
 #define ADC_BUFFER_LEN 32
 #define ADC_INV_BUF_LEN 1/ADC_BUFFER_LEN
@@ -82,6 +83,8 @@ typedef enum
 /* Exported functions ------------------------------------------------------- */
 void  audioInit(void);
 void  changePhaseInc(float freq);
+float FastTanh2Like4Term(float Input);
+float FastTanh2Like1Term(float Input);
 
 void DMA1_TransferCpltCallback(DMA_HandleTypeDef *hdma);
 void DMA1_HalfTransferCpltCallback(DMA_HandleTypeDef *hdma);

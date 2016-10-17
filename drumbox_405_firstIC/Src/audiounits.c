@@ -179,8 +179,9 @@ float tEnvelopeFollowerTick(tEnvelopeFollower *ef, float x) {
 	else
 	{
 		 /* Exponential decay of output when signal is low. */
-		 //ef->y = envelope_pow[(uint16_t)(ef->y * (float)UINT16_MAX)] * ef->d_coeff;
-		 ef->y = powf(ef->y, 1.000009f) * ef->d_coeff;
+		 //ef->y = envelope_pow[(uint16_t)(ef->y * (float)UINT16_MAX)] * ef->d_coeff; //not quite the right behavior - too much loss of precision?
+		 //ef->y = powf(ef->y, 1.000009f) * ef->d_coeff;  // too expensive
+		 ef->y = ef->y * ef->d_coeff; // original formula
 		 /*
 		 ** When output gets close to 0.0, set output to 0.0 to prevent FP underflow
 		 ** which can cause a severe performance degradation due to a flood
