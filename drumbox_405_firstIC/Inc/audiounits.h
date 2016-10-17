@@ -5,6 +5,45 @@
 #define VERY_SMALL_FLOAT 1.0e-38f
 #define DELAY_BUFFER_SIZE 8192//16384
 
+typedef struct _tEnvelope {
+	
+	float inv_sr; 
+	const float *exp_buff;
+	const float *inc_buff;
+	uint32_t buff_size;
+	
+	float attackInc, decayInc;
+	
+	int inAttack, inDecay;
+	
+	int loop;
+	
+	uint32_t attackPhase, decayPhase;
+	
+	float(*tick)(struct _tEnvelope *self);
+	int(*on)(struct _tEnvelope *self, float velocity);
+	int(*setDecay)(struct _tEnvelope *self, float decay);
+	int(*setAttack)(struct _tEnvelope *self, float attack);
+	int(*setLoop)(struct _tEnvelope *self, int loop);
+} tEnvelope;
+
+int tEnvelopeInit(tEnvelope *env, float sr, float attack, float decay, int loop, const float *exponentialTable, const float *attackDecayIncTable); 
+
+typedef struct _tADSR {
+	
+	float inv_sr;  
+
+	float(*tick)(struct _tEnvelope *self);
+	int(*on)(struct _tEnvelope *self, float velocity);
+	int(*off)(struct _tEnvelope *self);
+	int(*setDecay)(struct _tEnvelope *self, float decay);
+	int(*setAttack)(struct _tEnvelope *self, float attack);
+	int(*setSustain)(struct _tEnvelope *self, float decay);
+	int(*setRelease)(struct _tEnvelope *self, float attack);
+} tADSR;
+
+int tADSRInit(tADSR *d, float attack, float decay, float sustain, float release); 
+
 typedef struct _tDelay {
 	
 	uint32_t in_index, out_index;

@@ -5,6 +5,8 @@
 #include "main.h"
 
 #define SINE_TABLE_SIZE 2048
+#define EXP_DECAY_TABLE_SIZE 65536
+#define ATTACK_DECAY_INC_TABLE_SIZE 65536
 #define SHAPER1_TABLE_SIZE 65536
 #define ENVPOW_TABLE_SIZE 65536
 #define TANH1_TABLE_SIZE 65536
@@ -23,6 +25,8 @@ extern const float FB7[FB_TABLE_SIZE];
 extern const float FB8[FB_TABLE_SIZE];
 
 // mtof lookup table based on input range [0.0,1.0) in 4096 increments - midi frequency values scaled between m25 and m134 (as done in previous code)
+extern const float exp_decay[EXP_DECAY_TABLE_SIZE];
+extern const float attack_decay_inc[ATTACK_DECAY_INC_TABLE_SIZE];
 extern const float envelope_pow[ENVPOW_TABLE_SIZE];
 extern const float filtertan[FILTERTAN_TABLE_SIZE];
 extern const float mtof1[MTOF1_TABLE_SIZE];

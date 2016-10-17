@@ -7,6 +7,127 @@
 
 #define TWO_TO_16 65536.f
 
+/* Envelope */
+
+#define EXPONENTIAL_TABLE_SIZE 65536
+
+// we may want inverse Attack and Decay wavetables to avoid division
+
+static int tEnvelopeAttack(tEnvelope *env, float attack) {
+	
+	float inv_attack = 1.0f/attack;
+	env->attackInc = env->buff_size * inv_attack;
+		
+	return 0;
+}
+
+static int tEnvelopeDecay(tEnvelope *env, float decay) {
+	
+	float inv_decay = 1.0f/decay;
+	env->decayInc = env->buff_size * inv_decay;
+	
+	return 0;
+}
+
+static int tEnvelopeLoop(tEnvelope *env, int loop) {
+	
+	env->loop = loop;
+	
+	return 0;
+}
+
+
+static int tEnvelopeOn(tEnvelope *env, float velocity) {
+	env->attackPhase = 0;
+	env->decayPhase = 0;
+	env->inAttack = 1;
+	env->inDecay = 0;
+	return 0;
+}
+
+static float tEnvelopeTick(tEnvelope *env) {
+	
+	float out;
+	
+	if (env->inAttack) {
+		
+		uint32_t intPart = (uint32_t)env->attackInc;
+		float fracPart = env->attackInc - (float)intPart;
+		
+		// Increment envelope attack.
+		env->attackPhase += intPart;
+		
+		
+		// If attack done, time to turn around.
+		if (env->attackPhase >= UINT16_MAX) {
+			env->inDecay = 1;
+			env->inAttack = 0;
+			return 1.0f;
+		} else {
+			// do interpolation !
+			return (1.0f - env->exp_buff[UINT16_MAX - env->attackPhase]); // inverted and backwards to get proper rising exponential shape/perception 
+		}
+	
+	} else if (env->inDecay) {
+		
+		uint32_t intPart = (uint32_t)env->decayInc;
+		float fracPart = env->decayInc - (float)intPart;
+		
+		// Increment envelope decay;
+		env->decayPhase += intPart;
+		
+		// If decay done, finish. 
+		if (env->decayPhase >= UINT16_MAX) {
+			env->inDecay = 0;
+			if (env->loop) {
+				env->attackPhase = 0;
+				env->decayPhase = 0;
+				env->inAttack = 1;
+			}
+			return 0.0f;
+		} else {
+			
+			return (env->exp_buff[env->decayPhase]); // do interpolation !
+		}		
+	} else {
+		
+		return 0.0f;
+	}
+	
+}
+
+// exponentialTable must be of size 65536
+
+int tEnvelopeInit(tEnvelope *env, float sr, float attack, float decay, int loop, const float *exponentialTable, const float *attackDecayIncTable) {
+
+	env->inv_sr = 1.0f/sr; 
+	env->exp_buff = exponentialTable;
+	env->inc_buff = attackDecayIncTable;
+	env->buff_size = sizeof(exponentialTable);
+	
+	env->loop = loop;
+
+	if (attack > 8192) 
+		attack = 8192;  
+	if (attack < 0) 
+		attack = 0;
+	
+	if (decay > 8192) 
+		decay = 8192;  
+	if (decay < 0) 
+		decay = 0;
+		
+	env->attackInc = env->inc_buff[((uint16_t)(attack * 8.0f))-1];
+	env->decayInc = env->inc_buff[((uint16_t)(decay * 8.0f))-1];
+	
+	env->on = &tEnvelopeOn;
+	env->setLoop = &tEnvelopeLoop;
+	env->setAttack = &tEnvelopeAttack;
+	env->setDecay = &tEnvelopeDecay;
+	env->tick = &tEnvelopeTick;
+	return 0; 
+}
+
 /* Phasor */
 static int phasorFreq(tPhasor *p, float freq) {
 	
@@ -34,6 +155,8 @@ int tPhasorInit(tPhasor *p, float sr) {
 	
 	return 0; 
 }
+
+
 
 float tSVFTick(tSVF *svf, float v0) {
 	

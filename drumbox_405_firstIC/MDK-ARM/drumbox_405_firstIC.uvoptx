@@ -208,22 +208,6 @@
           <Type>0</Type>
           <LineNumber>492</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134252530</Address>
-          <ByteObject>0</ByteObject>
-          <HtxType>0</HtxType>
-          <ManyObjects>0</ManyObjects>
-          <SizeOfObject>0</SizeOfObject>
-          <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>1</BreakIfRCount>
-          <Filename>..\Src\waveplayer.c</Filename>
-          <ExecCommand></ExecCommand>
-          <Expression>\\drumbox_405_Configuration\../Src/waveplayer.c\492</Expression>
-        </Bp>
-        <Bp>
-          <Number>1</Number>
-          <Type>0</Type>
-          <LineNumber>492</LineNumber>
-          <EnabledFlag>1</EnabledFlag>
           <Address>134252580</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
