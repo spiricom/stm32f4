@@ -116,6 +116,9 @@ tEnvelopeFollower envFollowNoise;
 tEnvelopeFollower envFollowTrigOut;
 tEnvelopeFollower envFollowSine;
 
+// Envelope
+tEnvelope envDive;
+
 // Delay 
 tDelay delay1;
 
@@ -137,7 +140,7 @@ tSVF snare_Tone1Lowpass; // Lowpass from SVF filter
 tEnvelope snare_Tone1EnvOsc;
 tEnvelope snare_Tone1EnvGain;
 tEnvelope snare_Tone1EnvFilter;
-float snare_Tone1Gain = 0.3f;
+float snare_Tone1Gain = 0.35f;
 
 // Tone 2
 tTriangle snare_Tone2Osc; 
@@ -145,14 +148,14 @@ tSVF snare_Tone2Lowpass;
 tEnvelope snare_Tone2EnvOsc;
 tEnvelope snare_Tone2EnvGain;
 tEnvelope snare_Tone2EnvFilter;
-float snare_Tone2Gain = 0.3f;
+float snare_Tone2Gain = 0.35f;
 
 // Noise 
 tNoise snare_NoiseOsc; 
 tSVF snare_NoiseLowpass;
 tEnvelope snare_NoiseEnvGain;
 tEnvelope snare_NoiseEnvFilter;
-float snare_NoiseGain = 0.3f;
+float snare_NoiseGain = 0.25f;
 
 /************************************************/
 
@@ -188,7 +191,7 @@ uint8_t XY_Tx_Ready = 0;
 
 #define DAC_OUT 1
 #define TRIG_OUT_OLD 0
-#define TRIG_OUT_NEW 1
+#define TRIG_OUT_NEW 0
 
 
 uint16_t newcount = 0;
@@ -198,8 +201,11 @@ typedef enum BOOL {
 	TRUE
 } BOOL;
 
-#define NUM_SAMPS_BETWEEN_TRIG 2048
+#define NUM_SAMPS_BETWEEN_TRIG_808 2000
+#define NUM_SAMPS_BETWEEN_TRIG 8192
+#define NUM_SAMPS_BETWEEN_VEL_CHANGE 3500
 uint32_t sampSinceTrig = 0;
+uint32_t sampSinceVelChange = 0;
 uint16_t prevValue = 0;
 
 uint8_t CAT_LED[CAT_BUFFERSIZE];
@@ -257,7 +263,7 @@ void Error_Handler(void)
   }
 }
 
-#define DO_SNARE 1
+#define DO_SNARE 0
 
 void audioInit(void)
 { 
@@ -273,35 +279,36 @@ void audioInit(void)
 	}
 
 	// Initialize audio units.
-	
-		// SNARE1
+	// SNARE1
 	#if DO_SNARE 
 	tTriangleInit(&snare_Tone1Osc, SAMPLE_RATE);
 	tSVFInit(&snare_Tone1Lowpass, SAMPLE_RATE, SVFTypeLowpass, 2000, 1.0f);
-	tEnvelopeInit(&snare_Tone1EnvOsc, SAMPLE_RATE, 0.0f, 500.0f, 0, exp_decay, attack_decay_inc);
-	tEnvelopeInit(&snare_Tone1EnvGain, SAMPLE_RATE, 10.0f, 500.0f, 0, exp_decay, attack_decay_inc);
-	tEnvelopeInit(&snare_Tone1EnvFilter, SAMPLE_RATE, 0.0f, 500.0f, 0, exp_decay, attack_decay_inc);
+	tEnvelopeInit(&snare_Tone1EnvOsc, SAMPLE_RATE, 3.0f, 20.0f, 0, exp_decay, attack_decay_inc);
+	tEnvelopeInit(&snare_Tone1EnvGain, SAMPLE_RATE, 10.0f, 200.0f, 0, exp_decay, attack_decay_inc);
+	tEnvelopeInit(&snare_Tone1EnvFilter, SAMPLE_RATE, 3.0f, 200.0f, 0, exp_decay, attack_decay_inc);
 
 	tTriangleInit(&snare_Tone2Osc, SAMPLE_RATE);
 	tSVFInit(&snare_Tone2Lowpass, SAMPLE_RATE, SVFTypeLowpass, 2000, 1.0f);
-	tEnvelopeInit(&snare_Tone2EnvOsc, SAMPLE_RATE, 0.0f, 500.0f, 0, exp_decay, attack_decay_inc);
-	tEnvelopeInit(&snare_Tone2EnvGain, SAMPLE_RATE, 10.0f, 250.0f, 0, exp_decay, attack_decay_inc);
-	tEnvelopeInit(&snare_Tone2EnvFilter, SAMPLE_RATE, 0.0f, 500.0f, 0, exp_decay, attack_decay_inc);
+	tEnvelopeInit(&snare_Tone2EnvOsc, SAMPLE_RATE, 3.0f, 25.0f, 0, exp_decay, attack_decay_inc);
+	tEnvelopeInit(&snare_Tone2EnvGain, SAMPLE_RATE, 10.0f, 200.0f, 0, exp_decay, attack_decay_inc);
+	tEnvelopeInit(&snare_Tone2EnvFilter, SAMPLE_RATE, 3.0f, 200.0f, 0, exp_decay, attack_decay_inc);
 
 	tNoiseInit(&snare_NoiseOsc, SAMPLE_RATE, &randomNumber, NoiseTypeWhite);
 	tSVFInit(&snare_NoiseLowpass, SAMPLE_RATE, SVFTypeLowpass, 2000, 3.0f);
-	tEnvelopeInit(&snare_NoiseEnvGain, SAMPLE_RATE, 10.0f, 500.0f, 0, exp_decay, attack_decay_inc);
-	tEnvelopeInit(&snare_NoiseEnvFilter, SAMPLE_RATE, 0.0f, 250.0f, 0, exp_decay, attack_decay_inc);
+	tEnvelopeInit(&snare_NoiseEnvGain, SAMPLE_RATE, 10.0f, 125.0f, 0, exp_decay, attack_decay_inc);
+	tEnvelopeInit(&snare_NoiseEnvFilter, SAMPLE_RATE, 3.0f, 100.0f, 0, exp_decay, attack_decay_inc);
 
 #endif
 	tRampInit(&rampInputGain, SAMPLE_RATE, 5.0f, 1);
 	tHighpassInit(&highpass1, SAMPLE_RATE, 20.0f);
 	tEnvelopeFollowerInit(&envFollowTrigOut, 0.01f, 0.99f);
 
+	tEnvelopeInit(&envDive, SAMPLE_RATE, 3.0f, 50.0f, 0, exp_decay, attack_decay_inc);
+
 	tCycleInit(&sin1, SAMPLE_RATE, sinewave, SINE_TABLE_SIZE);
 	tNoiseInit(&noise1, SAMPLE_RATE, &randomNumber, NoiseTypeWhite);
 	tRampInit(&rampFeedback, SAMPLE_RATE, 10.0f, 1);
-	tRampInit(&rampSineFreq, SAMPLE_RATE, 12.0f, 1);
+	tRampInit(&rampSineFreq, SAMPLE_RATE, 5.0f, 1);
 	tRampInit(&rampDelayFreq, SAMPLE_RATE, 20.0f, 1);
 	tRampInit(&rampKSGain, SAMPLE_RATE, 5.0f, 1);
 	
@@ -312,11 +319,6 @@ void audioInit(void)
 	tDelayInit(&delay1,delayBuffer1);
 	tSVFInit(&svf1,SAMPLE_RATE,SVFTypeLowpass, 2000, 1.0f);
 	
-	
-
-
-
-
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); 
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // ADC CS pin goes high to make sure it's not selected
 	HAL_Delay(100);
@@ -472,6 +474,10 @@ float f_abs(float in) {
 }
 
 int trigState = 0;
+float peakEnv808;
+float vel = 0;
+float vels[200]; 
+int i = 0;
 float audio808Process(float audioIn) {
 	
 	float sample;
@@ -488,30 +494,42 @@ float audio808Process(float audioIn) {
 	audioIn = inputGain * audioIn;
 	
 	// TRIGGER STUFF
-	float peakEnv = envFollowTrigOut.tick(&envFollowTrigOut,audioIn);
+	float prevPeakEnv = peakEnv808;
+	peakEnv808 = envFollowTrigOut.tick(&envFollowTrigOut,audioIn);
+
 	if (!trigState) {
 		
-		if ((sampSinceTrig > NUM_SAMPS_BETWEEN_TRIG)  && (peakEnv > 0.1f)) {
+		if ((sampSinceTrig > NUM_SAMPS_BETWEEN_TRIG_808)  && (peakEnv808 > 0.09f)) {
+			
+			if (sampSinceVelChange > NUM_SAMPS_BETWEEN_VEL_CHANGE) {
+				vel = clip(0.0,10.0f * (peakEnv808 - prevPeakEnv),1.0);
+				if (i == 200) i = 0;
+				vels[i] = vel;
+				i++;
+				sampSinceVelChange = 0;
+				
+			}
+			//vel = 1.0f;
 			
 			trigState = 1;
 			sampSinceTrig = 0;
 			setTrigOut(1);
 
-			snare_Tone1EnvOsc.on(&snare_Tone1EnvOsc, 1.0f);
-			snare_Tone1EnvGain.on(&snare_Tone1EnvGain, 1.0f);
-			snare_Tone1EnvFilter.on(&snare_Tone1EnvFilter, 1.0f);
+			snare_Tone1EnvOsc.on(&snare_Tone1EnvOsc, vel);
+			snare_Tone1EnvGain.on(&snare_Tone1EnvGain, vel);
+			snare_Tone1EnvFilter.on(&snare_Tone1EnvFilter, vel);
 			
 			snare_Tone2EnvOsc.on(&snare_Tone2EnvOsc, 1.0f);
-			snare_Tone2EnvGain.on(&snare_Tone2EnvGain, 1.0f);
+			snare_Tone2EnvGain.on(&snare_Tone2EnvGain, vel);
 			snare_Tone2EnvFilter.on(&snare_Tone2EnvFilter, 1.0f);
 			
-			snare_NoiseEnvGain.on(&snare_NoiseEnvGain, 1.0f);
+			snare_NoiseEnvGain.on(&snare_NoiseEnvGain, vel);
 			snare_NoiseEnvFilter.on(&snare_NoiseEnvFilter, 1.0f);
 			
 		} 
 	} else {
 		
-		if ((peakEnv < 0.08f)) {
+		if ((peakEnv808 < 0.07f)) {
 		
 			sampSinceTrig++;
 			setTrigOut(0);
@@ -520,20 +538,23 @@ float audio808Process(float audioIn) {
 	}
 		
 	sampSinceTrig++;
+	sampSinceVelChange++;
 
-	
-	snare_Tone1Osc.freq(&snare_Tone1Osc, 90.0f + (10.0f*snare_Tone1EnvOsc.tick(&snare_Tone1EnvOsc)));
+	snare_Tone1Osc.freq(&snare_Tone1Osc, (75.0f + (ADC_values[ControlParameterBR] * INV_TWO_TO_12) * 75.0f) + (20.0f*snare_Tone1EnvOsc.tick(&snare_Tone1EnvOsc)));
 	float tone1 = snare_Tone1Osc.tick(&snare_Tone1Osc);
-	snare_Tone1Lowpass.setFreq(&snare_Tone1Lowpass, 1500 + (400 * snare_Tone1EnvFilter.tick(&snare_Tone1EnvFilter)));
+	snare_Tone1Lowpass.setFreq(&snare_Tone1Lowpass, 2000 + (500 * snare_Tone1EnvFilter.tick(&snare_Tone1EnvFilter)));
+	snare_Tone1EnvGain.setDecay(&snare_Tone1EnvGain, 50.0f + (ADC_values[ControlParameterMR] * INV_TWO_TO_12) * 700.0f); 
 	tone1 = snare_Tone1Lowpass.tick(&snare_Tone1Lowpass, tone1) * snare_Tone1EnvGain.tick(&snare_Tone1EnvGain);
 	
-	snare_Tone2Osc.freq(&snare_Tone2Osc, 200.0f + (100.0f * snare_Tone2EnvOsc.tick(&snare_Tone2EnvOsc)));
+	snare_Tone2Osc.freq(&snare_Tone2Osc, (150.0f + (ADC_values[ControlParameterBL] * INV_TWO_TO_12) * 150.0f) + (100.0f * snare_Tone2EnvOsc.tick(&snare_Tone2EnvOsc)));
 	float tone2 = snare_Tone2Osc.tick(&snare_Tone2Osc);
-	snare_Tone2Lowpass.setFreq(&snare_Tone2Lowpass, 1500 + (400 * snare_Tone2EnvFilter.tick(&snare_Tone2EnvFilter)));
+	snare_Tone2Lowpass.setFreq(&snare_Tone2Lowpass, 2000 + (500 * snare_Tone2EnvFilter.tick(&snare_Tone2EnvFilter)));
+	snare_Tone2EnvGain.setDecay(&snare_Tone2EnvGain, 30.0f + (ADC_values[ControlParameterMR] * INV_TWO_TO_12) * 500.0f); 
 	tone2 = snare_Tone2Lowpass.tick(&snare_Tone2Lowpass, tone2) * snare_Tone2EnvGain.tick(&snare_Tone2EnvGain);
 	
 	float noise = snare_NoiseOsc.tick(&snare_NoiseOsc);
-	snare_NoiseLowpass.setFreq(&snare_NoiseLowpass, 2500 +(400 * snare_NoiseEnvFilter.tick(&snare_NoiseEnvFilter)));
+	snare_NoiseLowpass.setFreq(&snare_NoiseLowpass, 3500 +(500 * snare_NoiseEnvFilter.tick(&snare_NoiseEnvFilter)));
+	snare_NoiseEnvGain.setDecay(&snare_NoiseEnvGain, 5.0f + (ADC_values[ControlParameterTL] * INV_TWO_TO_12) * 300.0f);
 	noise = snare_NoiseLowpass.tick(&snare_NoiseLowpass, noise) * snare_NoiseEnvGain.tick(&snare_NoiseEnvGain);
 	
 	sample = tone1 * snare_Tone1Gain + tone2 * snare_Tone2Gain + noise * snare_NoiseGain;
@@ -551,6 +572,7 @@ float audio808Process(float audioIn) {
 	
 }
 
+float peakEnvDive;
 float audioProcess(float audioIn) {
 	
 	float sample;
@@ -565,6 +587,31 @@ float audioProcess(float audioIn) {
 	}
 	float inputGain = rampInputGain.tick(&rampInputGain);
 	audioIn = inputGain * audioIn;
+	
+	// TRIGGER STUFF
+	peakEnvDive = envFollowTrigOut.tick(&envFollowTrigOut,audioIn);
+
+	if (!trigState) {
+		
+		if ((sampSinceTrig > NUM_SAMPS_BETWEEN_TRIG)  && (peakEnvDive > 0.08f)) {
+		
+			trigState = 1;
+			sampSinceTrig = 0;
+			setTrigOut(1);
+
+			envDive.on(&envDive,1.0f);
+		} 
+	} else {
+		
+		if ((peakEnvDive < 0.07f)) {
+		
+			sampSinceTrig++;
+			setTrigOut(0);
+			trigState = 0;
+		}
+	}
+		
+	sampSinceTrig++;
 	
 	// UPDATE NOISE FILTER Q and FREQ
 	float Q = 10.0f * (ADC_values[ControlParameterNoiseWidth] * INV_TWO_TO_12) + 0.05f;
@@ -588,7 +635,7 @@ float audioProcess(float audioIn) {
 	smoothedParams[SmoothedParameterFeedback] = rampFeedback.tick(&rampFeedback);
 	
 	// UPDATE SINE FREQ
-	sin1.freq(&sin1, rampSineFreq.tick(&rampSineFreq) + (FM_in * 1000.0f));
+	sin1.freq(&sin1, rampSineFreq.tick(&rampSineFreq) + envDive.tick(&envDive) * ((ADC_values[ControlParameterBL] * INV_TWO_TO_12) * 100.0f) + (FM_in * 1000.0f));
 	
 	// UPDATE DELAY PERIOD
 	smoothedParams[SmoothedParameterDelay] = rampDelayFreq.tick(&rampDelayFreq);
@@ -693,7 +740,7 @@ float audioProcess(float audioIn) {
 	}
 #endif	
 	
-	
+	//sample = 0.0f;
 	return sample;
 }
 

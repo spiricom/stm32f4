@@ -18,6 +18,8 @@ typedef struct _tEnvelope {
 	
 	int loop;
 	
+	float gain;
+	
 	uint32_t attackPhase, decayPhase;
 	
 	float(*tick)(struct _tEnvelope *self);
@@ -79,6 +81,19 @@ typedef struct _tSVF {
 // 0-4096 is mapped to midi notes 16-130 for cutoff frequency
 int tSVFInit(tSVF *svf, float sr, SVFType type, uint16_t cutoffKnob, float Q); 
 
+typedef struct _tSVFEfficient {
+	SVFType type;
+	float inv_sr;
+	float cutoff, Q;
+	float ic1eq,ic2eq;
+	float g,k,a1,a2,a3; 
+	float(*tick)(struct _tSVF *self, float v0);
+	int(*setFreq)(struct _tSVF *self, uint16_t cutoffKnob);
+	int(*setQ)(struct _tSVF *self, float Q);
+} tSVFEfficient;
+
+// 0-4096 is mapped to midi notes 16-130 for cutoff frequency
+int tSVFEfficientInit(tSVFEfficient *svf, float sr, SVFType type, uint16_t cutoffKnob, float Q);
 
 /* Envelope Follower */
 typedef struct _tEnvelopeFollower {

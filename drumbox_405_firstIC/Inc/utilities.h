@@ -10,6 +10,16 @@ typedef enum ControlParameterType {
 	ControlParameterNil,
 } ControlParameterType;
 
+typedef enum ControlParamaterXYType {
+	ControlParameterBR = 0,
+	ControlParameterBL,
+	ControlParameterMR,
+	ControlParameterML,
+	ControlParameterTR,
+	ControlParameterTL,
+	ControlParameterXYNil,
+} ControlParameterXYType;
+
 typedef enum SmoothedParameterType {
 	SmoothedParameterDelay= 0,
 	SmoothedParameterSineFreq,

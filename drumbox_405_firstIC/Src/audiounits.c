@@ -15,16 +15,34 @@
 
 static int tEnvelopeAttack(tEnvelope *env, float attack) {
 	
-	float inv_attack = 1.0f/attack;
-	env->attackInc = env->buff_size * inv_attack;
-		
+	uint16_t attackIndex;
+	
+	if (attack < 0) {
+		attackIndex = 0;
+	} else if (attack < 8192) { 
+		attackIndex = ((uint16_t)(attack * 8.0f))-1;
+	} else {
+		attackIndex = UINT16_MAX;
+	}
+	
+	env->attackInc = env->inc_buff[attackIndex];
+	
 	return 0;
 }
 
 static int tEnvelopeDecay(tEnvelope *env, float decay) {
 	
-	float inv_decay = 1.0f/decay;
-	env->decayInc = env->buff_size * inv_decay;
+	uint16_t decayIndex;
+	
+	if (decay < 0) {
+		decayIndex = 0;
+	} else if (decay < 8192) { 
+		decayIndex = ((uint16_t)(decay * 8.0f))-1;
+	} else {
+		decayIndex = ((uint16_t)(8192 * 8.0f))-1;
+	}
+
+	env->decayInc = env->inc_buff[decayIndex];
 	
 	return 0;
 }
@@ -42,6 +60,7 @@ static int tEnvelopeOn(tEnvelope *env, float velocity) {
 	env->decayPhase = 0;
 	env->inAttack = 1;
 	env->inDecay = 0;
+	env->gain = velocity;
 	return 0;
 }
 
@@ -59,13 +78,13 @@ static float tEnvelopeTick(tEnvelope *env) {
 		
 		
 		// If attack done, time to turn around.
-		if (env->attackPhase >= UINT16_MAX) {
+		if (env->attackPhase > UINT16_MAX) {
 			env->inDecay = 1;
 			env->inAttack = 0;
-			return 1.0f;
+			return env->gain * 1.0f;
 		} else {
 			// do interpolation !
-			return (1.0f - env->exp_buff[UINT16_MAX - env->attackPhase]); // inverted and backwards to get proper rising exponential shape/perception 
+			return env->gain * (1.0f - env->exp_buff[UINT16_MAX - env->attackPhase]); // inverted and backwards to get proper rising exponential shape/perception 
 		}
 	
 	} else if (env->inDecay) {
@@ -87,7 +106,7 @@ static float tEnvelopeTick(tEnvelope *env) {
 			return 0.0f;
 		} else {
 			
-			return (env->exp_buff[env->decayPhase]); // do interpolation !
+			return env->gain * (env->exp_buff[env->decayPhase]); // do interpolation !
 		}		
 	} else {
 		
@@ -117,8 +136,14 @@ int tEnvelopeInit(tEnvelope *env, float sr, float attack, float decay, int loop,
 	if (decay < 0) 
 		decay = 0;
 		
-	env->attackInc = env->inc_buff[((uint16_t)(attack * 8.0f))-1];
-	env->decayInc = env->inc_buff[((uint16_t)(decay * 8.0f))-1];
+	uint16_t attackIndex = ((uint16_t)(attack * 8.0f))-1; 
+	uint16_t decayIndex = ((uint16_t)(decay * 8.0f))-1;
+	if (attackIndex < 0)
+		attackIndex = 0;
+	if (decayIndex < 0)
+		decayIndex = 0;
+	env->attackInc = env->inc_buff[attackIndex];
+	env->decayInc = env->inc_buff[decayIndex];
 	
 	env->on = &tEnvelopeOn;
 	env->setLoop = &tEnvelopeLoop;
@@ -155,8 +180,6 @@ int tPhasorInit(tPhasor *p, float sr) {
 	
 	return 0; 
 }
-
-
 
 float tSVFTick(tSVF *svf, float v0) {
 	
@@ -234,6 +257,88 @@ int tSVFInit(tSVF *svf, float sr, SVFType type, uint16_t cutoffKnob, float Q) {
 	svf->tick = &tSVFTick;
 	svf->setQ = &tSVFSetQ;
 	svf->setFreq = &tSVFSetFreq; 
+	
+	return 0;
+}
+
+
+
+float tSVFEfficientTick(tSVF *svf, float v0) {
+	
+	float v1,v2,v3;
+	float low,high;
+	v3 = v0 - svf->ic2eq;
+	v1 = (svf->a1 * svf->ic1eq) + (svf->a2 * v3);
+	v2 = svf->ic2eq + (svf->a2 * svf->ic1eq) + (svf->a3 * v3);
+	svf->ic1eq = (2.0f * v1) - svf->ic1eq;
+	svf->ic2eq = (2.0f * v2) - svf->ic2eq;
+	
+	if (svf->type == SVFTypeLowpass) {
+		
+		return v2;
+	} else if (svf->type == SVFTypeBandpass) {
+		
+		return v1;
+	} else if (svf->type == SVFTypeHighpass) {
+		
+		return (v0 - (svf->k * v1) - v2);
+	} else if (svf->type == SVFTypeNotch) {
+		
+		return v0 - (svf->k * v1); 
+	} else if (svf->type == SVFTypePeak) {
+		
+		return v0 - (svf->k * v1) - 2.0f * v2;
+	} else {
+		
+		return 0.0f;
+	}
+	
+}
+
+int tSVFEfficientSetFreq(tSVF *svf, uint16_t cutoffKnob) {
+	
+	svf->g = filtertan[cutoffKnob];
+	svf->a1 = 1.0f/(1.0f + svf->g * (svf->g + svf->k));
+	svf->a2 = svf->g * svf->a1;
+	svf->a3 = svf->g * svf->a2;
+	
+	return 0;
+}
+
+int tSVFEfficientSetQ(tSVF *svf, float Q) {
+	
+	svf->k = 1.0f/Q;
+	svf->a1 = 1.0f/(1.0f + svf->g * (svf->g + svf->k));
+	svf->a2 = svf->g * svf->a1;
+	svf->a3 = svf->g * svf->a2;
+	
+	return 0;
+}
+
+int tSVFEfficientInit(tSVFEfficient *svf, float sr, SVFType type, uint16_t cutoffKnob, float Q) {
+	
+	svf->inv_sr = 1.0f/sr;
+	svf->type = type;
+	
+	svf->ic1eq = 0;
+	svf->ic2eq = 0;
+	
+	float a1,a2,a3,g,k;
+	g = filtertan[cutoffKnob]; 
+	k = 1.0f/Q;
+	a1 = 1.0f/(1.0f+g*(g+k));
+	a2 = g*a1;
+	a3 = g*a2;
+	
+	svf->g = g;
+	svf->k = k;
+	svf->a1 = a1;
+	svf->a2 = a2;
+	svf->a3 = a3;
+	
+	svf->tick = &tSVFEfficientTick;
+	svf->setQ = &tSVFEfficientSetQ;
+	svf->setFreq = &tSVFEfficientSetFreq; 
 	
 	return 0;
 }
