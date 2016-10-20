@@ -181,6 +181,28 @@ static int t808SnareSetNoiseDecay(t808Snare *snare, float decay) {
 	return 0;
 }
 
+static int t808SnareSetToneNoiseMix(t808Snare *snare, float toneNoiseMix) {
+	
+	snare->toneNoiseMix = toneNoiseMix;
+	
+	return 0;
+}
+
+static int t808SnareSetNoiseFilterFreq(t808Snare *snare, float noiseFilterFreq) {
+	
+	snare->noiseFilterFreq = noiseFilterFreq;
+	
+	return 0;
+}
+
+static int t808SnareSetNoiseFilterQ(t808Snare *snare, float noiseFilterQ) {
+	
+	setQ(snare->noiseLowpass, noiseFilterQ);
+	
+	return 0;
+}
+
+
 static float t808SnareTick(t808Snare *snare) {
 	
 	setFreq(snare->tone1Osc, snare->tone1Freq + (50.0f * tick0(snare->tone1EnvOsc)));
@@ -192,14 +214,14 @@ static float t808SnareTick(t808Snare *snare) {
 	setFreq(snare->tone2Osc, snare->tone2Freq + (50.0f * tick0(snare->tone2EnvOsc)));
 	float tone2 = snare->tone2Osc.tick(&snare->tone2Osc);
 	
-	setFreqFromKnob(snare->tone2Lowpass, 2000 + (500 * tick0(snare->tone2EnvFilter)));
+	setFreqFromKnob(snare->tone2Lowpass, snare->noiseFilterFreq + (500 * tick0(snare->tone2EnvFilter)));
 	tone2 = tick1(snare->tone2Lowpass, tone2) * tick0(snare->tone2EnvGain);
 	
 	float noise = tick0(snare->noiseOsc);
-	setFreqFromKnob(snare->noiseLowpass, 3500 +(500 * tick0(snare->noiseEnvFilter)));
+	setFreqFromKnob(snare->noiseLowpass, snare->noiseFilterFreq +(500 * tick0(snare->noiseEnvFilter)));
 	noise = tick1(snare->noiseLowpass, noise) * tick0(snare->noiseEnvGain);
 	
-	float sample = tone1 * snare->tone1Gain + tone2 * snare->tone2Gain + noise * snare->noiseGain;
+	float sample = (snare->toneNoiseMix)*(tone1 * snare->tone1Gain + tone2 * snare->tone2Gain) + (1.0f-snare->toneNoiseMix) * (noise * snare->noiseGain);
 
 	return sample;
 }
@@ -211,14 +233,14 @@ int t808SnareInit(t808Snare *snare, float sr, float (*randomNumberGenerator)(), 
 	tEnvelopeInit(&snare->tone1EnvOsc, sr, 3.0f, 20.0f, 0, exp_decay, attack_decay_inc);
 	tEnvelopeInit(&snare->tone1EnvGain, sr, 10.0f, 200.0f, 0, exp_decay, attack_decay_inc);
 	tEnvelopeInit(&snare->tone1EnvFilter, sr, 3.0f, 200.0f, 0, exp_decay, attack_decay_inc);
-	snare->tone1Gain = 0.35f;
+	snare->tone1Gain = 0.5f;
 	
 	tTriangleInit(&snare->tone2Osc, sr);
 	tSVFInit(&snare->tone2Lowpass, sr, SVFTypeLowpass, 2000, 1.0f);
 	tEnvelopeInit(&snare->tone2EnvOsc, sr, 3.0f, 25.0f, 0, exp_decay, attack_decay_inc);
 	tEnvelopeInit(&snare->tone2EnvGain, sr, 10.0f, 200.0f, 0, exp_decay, attack_decay_inc);
 	tEnvelopeInit(&snare->tone2EnvFilter, sr, 3.0f, 200.0f, 0, exp_decay, attack_decay_inc);
-	snare->tone2Gain = 0.35f;
+	snare->tone2Gain = 0.5f;
 
 	tNoiseInit(&snare->noiseOsc, sr, randomNumberGenerator, NoiseTypeWhite);
 	tSVFInit(&snare->noiseLowpass, sr, SVFTypeLowpass, 2000, 3.0f);
@@ -231,6 +253,9 @@ int t808SnareInit(t808Snare *snare, float sr, float (*randomNumberGenerator)(), 
 	snare->setTone1Decay = &t808SnareSetTone1Decay;
 	snare->setTone2Decay = &t808SnareSetTone2Decay;
 	snare->setNoiseDecay = &t808SnareSetNoiseDecay;
+	snare->setToneNoiseMix = &t808SnareSetToneNoiseMix;
+	snare->setNoiseFilterFreq = &t808SnareSetNoiseFilterFreq;
+	snare->setNoiseFilterQ = &t808SnareSetNoiseFilterQ;
 	snare->on = &t808SnareOn;
 	snare->tick = &t808SnareTick;
 	

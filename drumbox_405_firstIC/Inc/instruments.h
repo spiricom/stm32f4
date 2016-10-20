@@ -9,11 +9,14 @@
 #define setHihatOscBandpassFreq(THIS,FREQ) 		THIS.setOscBandpassFreq(&THIS,FREQ)
 #define setHihatOscNoiseMix(THIS,FREQ)				THIS.setOscNoiseMix(&THIS,FREQ)
 
-#define setTone1Freq(THIS,FREQ)								THIS.setTone1Freq(&THIS,FREQ)
-#define setTone2Freq(THIS,FREQ)								THIS.setTone2Freq(&THIS,FREQ)
-#define setTone1Decay(THIS,DECAY)						  THIS.setTone1Decay(&THIS,DECAY)
-#define setTone2Decay(THIS,DECAY)							THIS.setTone2Decay(&THIS,DECAY)
-#define setNoiseDecay(THIS,DECAY)						  THIS.setNoiseDecay(&THIS,DECAY)
+#define setSnareTone1Freq(THIS,FREQ)								THIS.setTone1Freq(&THIS,FREQ)
+#define setSnareTone2Freq(THIS,FREQ)								THIS.setTone2Freq(&THIS,FREQ)
+#define setSnareTone1Decay(THIS,DECAY)						  THIS.setTone1Decay(&THIS,DECAY)
+#define setSnareTone2Decay(THIS,DECAY)							THIS.setTone2Decay(&THIS,DECAY)
+#define setSnareNoiseDecay(THIS,DECAY)						  THIS.setNoiseDecay(&THIS,DECAY)
+#define setSnareToneNoiseMix(THIS,MIX)							THIS.setToneNoiseMix(&THIS,MIX)
+#define setSnareNoiseFilterFreq(THIS,FREQ)					THIS.setNoiseFilterFreq(&THIS,FREQ)
+#define setSnareNoiseFilterQ(THIS,Q)								THIS.setNoiseFilterQ(&THIS,Q)
 
 
 
@@ -51,9 +54,13 @@ typedef struct _t808Snare {
 	tEnvelope tone1EnvGain, tone2EnvGain, noiseEnvGain;
 	tEnvelope tone1EnvFilter, tone2EnvFilter, noiseEnvFilter;
 	float tone1Gain, tone2Gain, noiseGain;
+	
+	float toneNoiseMix;
 
 	
 	float tone1Freq, tone2Freq;
+	
+	float noiseFilterFreq;
 
 	float(*tick)(struct _t808Snare *self);
 	int(*on)(struct _t808Snare *self, float vel);
@@ -62,6 +69,10 @@ typedef struct _t808Snare {
 	int(*setTone1Decay)(struct _t808Snare *self, float decay);
 	int(*setTone2Decay)(struct _t808Snare *self, float decay);
 	int(*setNoiseDecay)(struct _t808Snare *self, float decay);
+	int(*setNoiseFilterFreq)(struct _t808Snare *self, float freq);
+	int(*setNoiseFilterQ)(struct _t808Snare *self, float Q);
+	int(*setToneNoiseMix)(struct _t808Snare *self, float toneNoiseMix);
+	
 	
 } t808Snare; 
 

@@ -253,8 +253,8 @@ float clipf(float min, float val, float max) {
 	}
 }
 
-#define DO_SNARE 0
-#define DO_HIHAT 1
+#define DO_SNARE 1
+#define DO_HIHAT 0
 
 void audioInit(void)
 { 
@@ -489,15 +489,18 @@ float audio808Process(float audioIn) {
 	sampSinceVelChange++;
 
 #if DO_SNARE
-	float tone1Freq= (75.0f + (ADC_values[ControlParameterBR] * INV_TWO_TO_12) * 75.0f);
-	setTone1Freq(snare, tone1Freq);
-	setTone1Decay(snare, 50.0f + (ADC_values[ControlParameterMR] * INV_TWO_TO_12) * 700.0f);
+	setSnareTone1Freq(snare, (60.0f + ((myTouchpad[1] * 16) * INV_TWO_TO_12) * 160.0f));
+	setSnareTone1Decay(snare, 50.0f + (ADC_values[ControlParameterBR] * INV_TWO_TO_12) * 700.0f);
+	
+	setSnareTone2Freq(snare, (100.0f + ((myTouchpad[0] * 16) * INV_TWO_TO_12) * 300.0f));
+	setSnareTone2Decay(snare, 30.0f + (ADC_values[ControlParameterMR] * INV_TWO_TO_12) * 500.0f); 
 
-	float tone2Freq= (150.0f + (ADC_values[ControlParameterBL] * INV_TWO_TO_12) * 150.0f);
-	setTone2Freq(snare, tone2Freq);
-	setTone2Decay(snare, 30.0f + (ADC_values[ControlParameterMR] * INV_TWO_TO_12) * 500.0f); 
-
-	setNoiseDecay(snare, 5.0f + (ADC_values[ControlParameterTL] * INV_TWO_TO_12) * 300.0f);
+	setSnareNoiseDecay(snare, 5.0f + (ADC_values[ControlParameterTR] * INV_TWO_TO_12) * 300.0f);
+	
+	setSnareToneNoiseMix(snare, (ADC_values[ControlParameterBL] * INV_TWO_TO_12));
+	
+	setSnareNoiseFilterFreq(snare, 2000.0f + 2000.0f*(ADC_values[ControlParameterTL] * INV_TWO_TO_12));
+	setSnareNoiseFilterQ(snare, 0.5f + 1.5f*(ADC_values[ControlParameterML] * INV_TWO_TO_12));
 	
 	sample = tick0(snare);
 #endif
