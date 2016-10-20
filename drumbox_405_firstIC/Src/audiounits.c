@@ -9,6 +9,16 @@
 
 #define EXPONENTIAL_TABLE_SIZE 65536
 
+float clipAU(float min, float val, float max) {
+	
+	if (val < min) {
+		return min;
+	} else if (val > max) {
+		return max;
+	} else {
+		return val;
+	}
+}
 // we may want inverse Attack and Decay wavetables to avoid division
 
 static int tEnvelopeAttack(tEnvelope *env, float attack) {
@@ -571,10 +581,9 @@ int tTriangleInit(tTriangle *t, float sr) {
 /* Square */
 static int tPulseWidth(tPulse *pl, float pwidth) {
 	//pwidth [0.0, 1.0)
-	float pw = pwidth;
-	if (pw >= 1.0f) pw = 0.99f; 
-	if (pw <= 0.0f) pw = 0.01f;
-	pl->pw = (pw * 2.0f) - 1.0f; 
+	
+	pl->pw = clipAU(0.05f,pwidth,0.95f);
+	
 	return 0;
 }
 
@@ -590,8 +599,8 @@ static float tPulseTick(tPulse *pl) {
 	pl->phase += pl->inc;
 	if (pl->phase >= 1.0f) pl->phase -= 1.0f;
 	
-	float phase =  (pl->phase * 2.0f)-1.0f; 
-	if (phase < pl->pw) return 1.0f;
+	
+	if (pl->phase < pl->pw) return 1.0f;
 	else return -1.0f;
 }
 
@@ -602,7 +611,7 @@ int tPulseInit(tPulse *pl, float sr, float pwidth) {
 	pl->phase = 0.0f;
 	pl->inv_sr = 1.0f/sr;
 	
-	pl->pw = pwidth; 
+	pl->pw = clipAU(0.05f,pwidth,0.95f);
 	pl->pwidth = &tPulseWidth;
 	pl->setFreq = &tPulseFreq;
 	pl->tick = &tPulseTick;

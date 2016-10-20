@@ -1,7 +1,28 @@
 #include "instruments.h"
+#include "math.h"
+
+float clipI(float min, float val, float max) {
+	
+	if (val < min) {
+		return min;
+	} else if (val > max) {
+		return max;
+	} else {
+		return val;
+	}
+}
+
 static int t808HihatOn(t808Hihat *hihat, float vel) {
 	
 	envOn(hihat->envGain, vel);
+	envOn(hihat->envStick, vel);
+	
+	return 0;	
+}
+
+static int t808HihatSetOscNoiseMix(t808Hihat *hihat, float oscNoiseMix) {
+	
+	hihat->oscNoiseMix = oscNoiseMix;
 	
 	return 0;	
 }
@@ -9,7 +30,7 @@ static int t808HihatOn(t808Hihat *hihat, float vel) {
 static float t808HihatTick(t808Hihat *hihat) {
 	
 	float sample = 0.0f;
-	float gainScale = 0.15f;
+	float gainScale = 0.1666f;
 	
 	sample = (gainScale * tick0(hihat->p1));
 	sample += (gainScale * tick0(hihat->p2));
@@ -17,12 +38,15 @@ static float t808HihatTick(t808Hihat *hihat) {
 	sample += (gainScale * tick0(hihat->p4));
 	sample += (gainScale * tick0(hihat->p5));
 	sample += (gainScale * tick0(hihat->p6));
+	sample = (hihat->oscNoiseMix * sample) + ((1.0f-hihat->oscNoiseMix) * (0.8f*tick0(hihat->n)));
 	
-	sample = tick1(hihat->bandpass, sample);
+	sample = tick1(hihat->bandpassOsc, sample);
 	
 	sample *= tick0(hihat->envGain);
 	
-	sample = tick1(hihat->highpass, sample);
+	sample = 0.85f * clipI(0.0f, tick1(hihat->highpass, sample), 1.0f);
+	
+	sample += 0.15f * tick0(hihat->envStick) * tick1(hihat->bandpassStick,tick0(hihat->stick));
 	
 	return sample;
 }
@@ -34,38 +58,64 @@ static int t808HihatSetDecay(t808Hihat *hihat, float decay) {
 }
 
 static int t808HihatSetHighpassFreq(t808Hihat *hihat, float freq) {
+
 	setFreq(hihat->highpass,freq);
 	
 	return 0;
 }
 
-int t808HihatInit(t808Hihat *hihat, float sr, const float *exp_decay, const float *attack_decay_inc) {
-/*	
-	tPulseInit(&hihat->p1,sr,1.0f);
-	tPulseInit(&hihat->p2,sr,1.0f);
-	tPulseInit(&hihat->p3,sr,1.0f);
-	tPulseInit(&hihat->p4,sr,1.0f);
-	tPulseInit(&hihat->p5,sr,1.0f);
-	tPulseInit(&hihat->p6,sr,1.0f);
-*/
+static int t808HihatSetOscBandpassFreq(t808Hihat *hihat, float freq) {
+	setFreqFromKnob(hihat->bandpassOsc,freq);
+	
+	return 0;
+}
+
+
+static int t808HihatSetOscFreq(t808Hihat *hihat, float freq) {
+	
+	setFreq(hihat->p1, 2.0f * freq);
+	setFreq(hihat->p2, 3.00f * freq);
+	setFreq(hihat->p3, 4.16f * freq);
+	setFreq(hihat->p4, 5.43f * freq);
+	setFreq(hihat->p5, 6.79f * freq);
+	setFreq(hihat->p6, 8.21f * freq);
+	
+	return 0;
+}
+
+int t808HihatInit(t808Hihat *hihat, float sr, float (*randomNumberGenerator)(), const float *exp_decay, const float *attack_decay_inc) {
+	
+
+	tPulseInit(&hihat->p1,sr,0.5f);
+	tPulseInit(&hihat->p2,sr,0.5f);
+	tPulseInit(&hihat->p3,sr,0.5f);
+	tPulseInit(&hihat->p4,sr,0.5f);
+	tPulseInit(&hihat->p5,sr,0.5f);
+	tPulseInit(&hihat->p6,sr,0.5f);
+	
+	/*
 	tSawtoothInit(&hihat->p1,sr);
 	tSawtoothInit(&hihat->p2,sr);
 	tSawtoothInit(&hihat->p3,sr);
 	tSawtoothInit(&hihat->p4,sr);
 	tSawtoothInit(&hihat->p5,sr);
 	tSawtoothInit(&hihat->p6,sr);
+	*/
+	
+	tNoiseInit(&hihat->stick,sr,randomNumberGenerator,NoiseTypeWhite);
+	tNoiseInit(&hihat->n, sr,randomNumberGenerator,NoiseTypeWhite);
 	
 	// need to fix SVF to be generic
-	tSVFInit(&hihat->bandpass,sr,SVFTypeBandpass,3500,0.8f);
+	tSVFInit(&hihat->bandpassStick,sr,SVFTypeBandpass,2500.0,1.5f);
+	tSVFInit(&hihat->bandpassOsc,sr,SVFTypeBandpass,3500,0.5f);
 	
 	tEnvelopeInit(&hihat->envGain, sr, 5.0f, 50.0f, 0, exp_decay, attack_decay_inc);
+	tEnvelopeInit(&hihat->envStick, sr, 5.0f, 15.0f, 0, exp_decay, attack_decay_inc);
 	
 	tHighpassInit(&hihat->highpass, sr, 7000.0f);
-	
-	float fund = 40.0f;
-	
+	float fund = 40.0f;	
 	setFreq(hihat->p1, 2.0f * fund);
-	setFreq(hihat->p2, 3.0f * fund);
+	setFreq(hihat->p2, 3.00f * fund);
 	setFreq(hihat->p3, 4.16f * fund);
 	setFreq(hihat->p4, 5.43f * fund);
 	setFreq(hihat->p5, 6.79f * fund);
@@ -73,6 +123,9 @@ int t808HihatInit(t808Hihat *hihat, float sr, const float *exp_decay, const floa
 	
 	hihat->setDecay = t808HihatSetDecay;
 	hihat->setHighpassFreq = t808HihatSetHighpassFreq;
+	hihat->setOscFreq = &t808HihatSetOscFreq;
+	hihat->setOscBandpassFreq = &t808HihatSetOscBandpassFreq;
+	hihat->setOscNoiseMix = &t808HihatSetOscNoiseMix;
 	hihat->on = &t808HihatOn;
 	hihat->tick = &t808HihatTick;
 	

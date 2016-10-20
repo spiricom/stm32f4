@@ -5,6 +5,9 @@
 
 #define setHihatDecay(THIS,DECAY)							THIS.setDecay(&THIS,DECAY)
 #define setHihatHighpassFreq(THIS,FREQ)				THIS.setHighpassFreq(&THIS,FREQ)
+#define setHihatFreq(THIS,FREQ)								THIS.setOscFreq(&THIS,FREQ)
+#define setHihatOscBandpassFreq(THIS,FREQ) 		THIS.setOscBandpassFreq(&THIS,FREQ)
+#define setHihatOscNoiseMix(THIS,FREQ)				THIS.setOscNoiseMix(&THIS,FREQ)
 
 #define setTone1Freq(THIS,FREQ)								THIS.setTone1Freq(&THIS,FREQ)
 #define setTone2Freq(THIS,FREQ)								THIS.setTone2Freq(&THIS,FREQ)
@@ -17,21 +20,26 @@
 typedef struct _t808Hihat {
 
 	// 6 Square waves
-	tSawtooth p1,p2,p3,p4,p5,p6;
-	tSVF bandpass;
-	tEnvelope envGain;
+	tPulse p1,p2,p3,p4,p5,p6;
+	tNoise n;
+	tSVF bandpassOsc,bandpassStick;
+	tEnvelope envGain,envStick;
 	tHighpass highpass;
+	tNoise stick;
 	
-	float tone1Freq, tone2Freq, tone3Freq, tone4Freq, tone5Freq, tone6Freq;
-
+	float oscNoiseMix;
+	
 	int(*setHighpassFreq)(struct _t808Hihat *self, float freq);
 	int(*setDecay)(struct _t808Hihat *self, float decay);
+	int(*setOscFreq)(struct _t808Hihat *self, float freq);
+	int(*setOscBandpassFreq)(struct _t808Hihat *self, float freq);
+	int(*setOscNoiseMix)(struct _t808Hihat *self, float oscNoiseMix);
 	float(*tick)(struct _t808Hihat *self);
 	int(*on)(struct _t808Hihat *self, float vel);
 	
 } t808Hihat; 
 
-int t808HihatInit(t808Hihat *snare, float sr, const float *exp_decay, const float *attack_decay_inc);
+int t808HihatInit(t808Hihat *snare, float sr, float (*randomNumberGenerator)(),const float *exp_decay, const float *attack_decay_inc);
 
 typedef struct _t808Snare {
 

@@ -1,3 +1,6 @@
+#ifndef UTILITIES_H
+#define UTILITIES_H
+
 #include "stdint.h"
 
 typedef enum ControlParameterType {
@@ -27,6 +30,7 @@ typedef enum SmoothedParameterType {
 	SmoothedParameterNil,
 } SmoothedParameterType;
 
+
 /* Ramp */
 typedef struct _tRamp {
 	float inc;
@@ -40,3 +44,5 @@ typedef struct _tRamp {
 } tRamp; 
 
 int tRampInit(tRamp *r, float sr, float time, int samples_per_tick);
+
+#endif

@@ -17,9 +17,9 @@ This is the Snyderphonics DrumBox synthesis code.
 
 #include "main.h"
 #include "wavetables.h"
-#include "utilities.h"
 #include "audiounits.h"
 #include "instruments.h"
+#include "utilities.h"
 #include "waveplayer.h"
 
 
@@ -222,7 +222,6 @@ float interpolateFeedback(uint16_t idx);
 float interpolateDelayControl(float raw_data);
 void audioTick(uint16_t buffer_offset);
 void setTrigOut(uint8_t set);
-float clip(float min, float val, float max);
 float randomNumber(void);
 
 void setXYLED(uint8_t led1, uint8_t led2);
@@ -240,6 +239,18 @@ void Error_Handler(void)
   {
 		;
   }
+}
+
+
+float clipf(float min, float val, float max) {
+	
+	if (val < min) {
+		return min;
+	} else if (val > max) {
+		return max;
+	} else {
+		return val;
+	}
 }
 
 #define DO_SNARE 0
@@ -260,7 +271,7 @@ void audioInit(void)
 
 	// Initialize audio units.
 	t808SnareInit(&snare, SAMPLE_RATE, &randomNumber, exp_decay, attack_decay_inc);
-	t808HihatInit(&hihat, SAMPLE_RATE, exp_decay, attack_decay_inc);
+	t808HihatInit(&hihat, SAMPLE_RATE, &randomNumber, exp_decay, attack_decay_inc);
 
 	tRampInit(&rampInputGain, SAMPLE_RATE, 5.0f, 1);
 	tHighpassInit(&highpass1, SAMPLE_RATE, 20.0f);
@@ -442,7 +453,7 @@ float audio808Process(float audioIn) {
 		if ((sampSinceTrig > NUM_SAMPS_BETWEEN_TRIG_808)  && (peakEnv808 > 0.09f)) {
 			
 			if (sampSinceVelChange > NUM_SAMPS_BETWEEN_VEL_CHANGE) {
-				vel = clip(0.0,10.0f * (peakEnv808 - prevPeakEnv),1.0);
+				vel = clipf(0.0,10.0f * (peakEnv808 - prevPeakEnv),1.0);
 				if (i == 200) i = 0;
 				vels[i] = vel;
 				i++;
@@ -492,9 +503,12 @@ float audio808Process(float audioIn) {
 #endif
 	
 #if DO_HIHAT
-	//4096 - (myTouchpad[1] * 16)
-	setHihatDecay(hihat, 30.0f + 970.0f * ((myTouchpad[1] * 16) * INV_TWO_TO_12));
-	setHihatHighpassFreq(hihat, 1500.0f + 13500.0f * (myTouchpad[0] * 16) * INV_TWO_TO_12);
+	setHihatDecay(hihat, 10.0f + 970.0f * ((myTouchpad[1] * 16) * INV_TWO_TO_12));
+	setHihatFreq(hihat, 10.0f + 600.0f * (ADC_values[ControlParameterBR] * INV_TWO_TO_12));
+	setHihatOscBandpassFreq(hihat, 2000 + 2000 * (ADC_values[ControlParameterBL] * INV_TWO_TO_12));
+	setHihatHighpassFreq(hihat, 1000.0f + 14000.0f * (myTouchpad[0] * 16) * INV_TWO_TO_12);
+	setHihatOscNoiseMix(hihat, (ADC_values[ControlParameterML] * INV_TWO_TO_12));
+	
 	sample = tick0(hihat);
 #endif
 	
@@ -502,9 +516,9 @@ float audio808Process(float audioIn) {
 	//;
 	//snare_Tone2EnvOsc.tick(&snare_Tone2EnvOsc);
 	
-	//clip(-1.0f, sample, 1.0f);
+	//clipf(-1.0f, sample, 1.0f);
 	//sample = FastTanh2Like1Term(sample);
-	//clip(-1.0f, sample, 1.0f);
+	//clipf(-1.0f, sample, 1.0f);
 	//sample = shaper1[(uint16_t)((sample+1.0f)*0.5f * TWO_TO_16_MINUS_ONE)];
   sample = tick1(highpass1, sample);
 	return sample;
@@ -619,9 +633,9 @@ float audioProcess(float audioIn) {
 	
 	sample *= masterGain;
 	sample *= .5;
-	//clip(-1.0f, sample, 1.0f);
+	//clipf(-1.0f, sample, 1.0f);
 	sample = FastTanh2Like1Term(sample);
-	//clip(-1.0f, sample, 1.0f);
+	//clipf(-1.0f, sample, 1.0f);
 	//sample = shaper1[(uint16_t)((sample+1.0f)*0.5f * TWO_TO_16_MINUS_ONE)];
   sample = tick1(highpass1, sample);
 
@@ -714,17 +728,6 @@ void DMA1_externalDACInit(void) {
 	HAL_I2C_Master_Transmit_DMA(&hi2c1, 192, I2C_init_command, 3);
 }
 
-float clip(float min, float val, float max) {
-	
-	if (val < min) {
-		return min;
-	} else if (val > max) {
-		return max;
-	} else {
-		return val;
-	}
-}
-
 float ksTick(float noise_in)
 {
 		float temp_sample, out, gain;
@@ -737,7 +740,7 @@ float ksTick(float noise_in)
 	  //simple one-zero lowpass filter (moving average)
 		m_output0 = 0.5f * m_input1 + 0.5f * feedbacksamp;
 		m_input1 = feedbacksamp;
-		feedbacksamp = clip(-1.0f,tick1(highpass2, m_output0),1.0f);
+		feedbacksamp = clipf(-1.0f,tick1(highpass2, m_output0),1.0f);
 		float absFeedbackSamp;
 		if (feedbacksamp < 0.0f)
 		{
