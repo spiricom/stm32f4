@@ -19,6 +19,7 @@ This is the Snyderphonics DrumBox synthesis code.
 #include "wavetables.h"
 #include "utilities.h"
 #include "audiounits.h"
+#include "instruments.h"
 #include "waveplayer.h"
 
 
@@ -94,6 +95,10 @@ uint8_t whichSPI2 = 0;
 uint8_t externalDACOutputBuffer[NUM_BYTES_TO_SEND];
 uint8_t externalDACOutputBufferTX[NUM_BYTES_TO_SEND];
 
+// Instruments
+t808Snare snare; 
+t808Hihat hihat;
+
 // Sine 
 tCycle sin1; 
 
@@ -132,35 +137,6 @@ float noiseGain = 2.0f;
 float noiseFilterGain = 0.5f;
 float ksGain = 0.8f;
 
-/****************808 Stuff***********************/
-// SNARE1
-// Tone 1
-tTriangle snare_Tone1Osc; // Tri (not yet antialiased or wavetabled)
-tSVF snare_Tone1Lowpass; // Lowpass from SVF filter
-tEnvelope snare_Tone1EnvOsc;
-tEnvelope snare_Tone1EnvGain;
-tEnvelope snare_Tone1EnvFilter;
-float snare_Tone1Gain = 0.35f;
-
-// Tone 2
-tTriangle snare_Tone2Osc; 
-tSVF snare_Tone2Lowpass;
-tEnvelope snare_Tone2EnvOsc;
-tEnvelope snare_Tone2EnvGain;
-tEnvelope snare_Tone2EnvFilter;
-float snare_Tone2Gain = 0.35f;
-
-// Noise 
-tNoise snare_NoiseOsc; 
-tSVF snare_NoiseLowpass;
-tEnvelope snare_NoiseEnvGain;
-tEnvelope snare_NoiseEnvFilter;
-float snare_NoiseGain = 0.25f;
-
-/************************************************/
-
-
-
 float feedbacksamp = 0.f;
 
 float newFreq = 0.0f;
@@ -192,6 +168,9 @@ uint8_t XY_Tx_Ready = 0;
 #define DAC_OUT 1
 #define TRIG_OUT_OLD 0
 #define TRIG_OUT_NEW 0
+
+#define XY_LED 1
+#define XY_TP 1
 
 
 uint16_t newcount = 0;
@@ -264,6 +243,7 @@ void Error_Handler(void)
 }
 
 #define DO_SNARE 0
+#define DO_HIHAT 1
 
 void audioInit(void)
 { 
@@ -279,26 +259,9 @@ void audioInit(void)
 	}
 
 	// Initialize audio units.
-	// SNARE1
-	#if DO_SNARE 
-	tTriangleInit(&snare_Tone1Osc, SAMPLE_RATE);
-	tSVFInit(&snare_Tone1Lowpass, SAMPLE_RATE, SVFTypeLowpass, 2000, 1.0f);
-	tEnvelopeInit(&snare_Tone1EnvOsc, SAMPLE_RATE, 3.0f, 20.0f, 0, exp_decay, attack_decay_inc);
-	tEnvelopeInit(&snare_Tone1EnvGain, SAMPLE_RATE, 10.0f, 200.0f, 0, exp_decay, attack_decay_inc);
-	tEnvelopeInit(&snare_Tone1EnvFilter, SAMPLE_RATE, 3.0f, 200.0f, 0, exp_decay, attack_decay_inc);
+	t808SnareInit(&snare, SAMPLE_RATE, &randomNumber, exp_decay, attack_decay_inc);
+	t808HihatInit(&hihat, SAMPLE_RATE, exp_decay, attack_decay_inc);
 
-	tTriangleInit(&snare_Tone2Osc, SAMPLE_RATE);
-	tSVFInit(&snare_Tone2Lowpass, SAMPLE_RATE, SVFTypeLowpass, 2000, 1.0f);
-	tEnvelopeInit(&snare_Tone2EnvOsc, SAMPLE_RATE, 3.0f, 25.0f, 0, exp_decay, attack_decay_inc);
-	tEnvelopeInit(&snare_Tone2EnvGain, SAMPLE_RATE, 10.0f, 200.0f, 0, exp_decay, attack_decay_inc);
-	tEnvelopeInit(&snare_Tone2EnvFilter, SAMPLE_RATE, 3.0f, 200.0f, 0, exp_decay, attack_decay_inc);
-
-	tNoiseInit(&snare_NoiseOsc, SAMPLE_RATE, &randomNumber, NoiseTypeWhite);
-	tSVFInit(&snare_NoiseLowpass, SAMPLE_RATE, SVFTypeLowpass, 2000, 3.0f);
-	tEnvelopeInit(&snare_NoiseEnvGain, SAMPLE_RATE, 10.0f, 125.0f, 0, exp_decay, attack_decay_inc);
-	tEnvelopeInit(&snare_NoiseEnvFilter, SAMPLE_RATE, 3.0f, 100.0f, 0, exp_decay, attack_decay_inc);
-
-#endif
 	tRampInit(&rampInputGain, SAMPLE_RATE, 5.0f, 1);
 	tHighpassInit(&highpass1, SAMPLE_RATE, 20.0f);
 	tEnvelopeFollowerInit(&envFollowTrigOut, 0.01f, 0.99f);
@@ -327,11 +290,6 @@ void audioInit(void)
 	//now to send all the necessary messages to the codec
 	AudioCodec_init();
 	HAL_Delay(100);
-	//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); 
-	
-	
-	//MX_SPI1_Init();
-	//start_Other_IC_Communication();
 	
 	// set up the I2S driver to send audio data to the codec (and retrieve input as well)	
 	HAL_I2SEx_TransmitReceive_DMA(&hi2s3, (uint16_t *)&audioOutBuffer[0], (uint16_t *)&audioInBuffer[0], AUDIO_BUFFER_SIZE);
@@ -344,36 +302,11 @@ void audioInit(void)
 	whichSPI2 = 0;
 	// SPI2 LED Initial Call
 	
+#if XY_LED
 	setXYLED(3,3);
+#endif
 	
-	
-/*
-  while(1)
-	{
-		//if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_SET)
-		//{
-			//getXY_Touchpad();
-			//Write7SegWave((myTouchpad[0] / 4));
-		  spi1tx = HAL_DMA_GetState(&hdma_spi1_tx);
-		  mess = spi1tx;
-		  spi1rx = HAL_DMA_GetState(&hdma_spi1_rx);
-		  mess = spi1rx;
-		
-		
-		//}
-	}
-	*/
-	/*
-	while(1)
-	{
-		if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_SET)
-		{
-			getXY_Touchpad();
-			//Write7SegWave((myTouchpad[0] / 4));
-			
-		}
-	}
-	*/
+
 	//HAL_SPI_TransmitReceive_DMA(&hspi1, (uint8_t *)IC_tx, (uint8_t *)IC_rx, IC_BUFFER_SIZE);
 }
 
@@ -419,31 +352,37 @@ void audioTick(uint16_t buffer_offset)
 {
 	uint16_t i = 0;
 	int16_t current_sample = 0;  
-
+	
+#if XY_TP
 	if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1)) {
 		getXY_Touchpad();
+		
 	}
+#endif
 	
 	newDelay = interpolateDelayControl((4096 - (myTouchpad[1] * 16)));
-	rampDelayFreq.setDest(&rampDelayFreq,newDelay);
+	setRampDest(rampDelayFreq,newDelay);
 	
 	newFreq = ((mtof1[myTouchpad[0] * 16]) * 0.2f);
-	rampSineFreq.setDest(&rampSineFreq,newFreq);
+	setRampDest(rampSineFreq,newFreq);
 
+#if XY_LED 
 	XYLED[0] = 7 - (uint8_t)(myTouchpad[0] * INV_TWO_TO_5);
 	XYLED[1] = 7 - (uint8_t)(myTouchpad[1] * INV_TWO_TO_5);
+
 	
 	if (XY_Tx_Ready)
 	{
 		XY_Tx_Ready = 0;
 		setXYLED(XYLED[0],XYLED[1]);
 	}
+#endif
 	
 
 	for (i = 0; i < (HALF_BUFFER_SIZE); i++)
 	{
 		if ((i & 1) == 0) {
-			#if DO_SNARE
+			#if (DO_SNARE || DO_HIHAT)
 				current_sample = (int16_t)(audio808Process((float) (audioInBuffer[buffer_offset + i] * INV_TWO_TO_15)) * TWO_TO_15);
 			#else 
 			  current_sample = (int16_t)(audioProcess((float) (audioInBuffer[buffer_offset + i] * INV_TWO_TO_15)) * TWO_TO_15);
@@ -478,6 +417,7 @@ float peakEnv808;
 float vel = 0;
 float vels[200]; 
 int i = 0;
+
 float audio808Process(float audioIn) {
 	
 	float sample;
@@ -485,10 +425,10 @@ float audio808Process(float audioIn) {
 	// alternative to custom f_abs is fabs in the math.h library?
 	float absAudioIn = f_abs(audioIn);
 	if (absAudioIn < 0.0001f) {
-		rampInputGain.setDest(&rampInputGain, 0.0f);
+		setRampDest(rampInputGain, 0.0f);
 	} 
 	if (absAudioIn > 0.00015f) {
-		rampInputGain.setDest(&rampInputGain, 1.0f);
+		setRampDest(rampInputGain, 1.0f);
 	}
 	float inputGain = rampInputGain.tick(&rampInputGain);
 	audioIn = inputGain * audioIn;
@@ -514,17 +454,14 @@ float audio808Process(float audioIn) {
 			trigState = 1;
 			sampSinceTrig = 0;
 			setTrigOut(1);
-
-			snare_Tone1EnvOsc.on(&snare_Tone1EnvOsc, vel);
-			snare_Tone1EnvGain.on(&snare_Tone1EnvGain, vel);
-			snare_Tone1EnvFilter.on(&snare_Tone1EnvFilter, vel);
 			
-			snare_Tone2EnvOsc.on(&snare_Tone2EnvOsc, 1.0f);
-			snare_Tone2EnvGain.on(&snare_Tone2EnvGain, vel);
-			snare_Tone2EnvFilter.on(&snare_Tone2EnvFilter, 1.0f);
+#if DO_SNARE
+			envOn(snare,vel);
+#endif
 			
-			snare_NoiseEnvGain.on(&snare_NoiseEnvGain, vel);
-			snare_NoiseEnvFilter.on(&snare_NoiseEnvFilter, 1.0f);
+#if DO_HIHAT
+			envOn(hihat,vel);
+#endif
 			
 		} 
 	} else {
@@ -540,24 +477,27 @@ float audio808Process(float audioIn) {
 	sampSinceTrig++;
 	sampSinceVelChange++;
 
-	snare_Tone1Osc.freq(&snare_Tone1Osc, (75.0f + (ADC_values[ControlParameterBR] * INV_TWO_TO_12) * 75.0f) + (20.0f*snare_Tone1EnvOsc.tick(&snare_Tone1EnvOsc)));
-	float tone1 = snare_Tone1Osc.tick(&snare_Tone1Osc);
-	snare_Tone1Lowpass.setFreq(&snare_Tone1Lowpass, 2000 + (500 * snare_Tone1EnvFilter.tick(&snare_Tone1EnvFilter)));
-	snare_Tone1EnvGain.setDecay(&snare_Tone1EnvGain, 50.0f + (ADC_values[ControlParameterMR] * INV_TWO_TO_12) * 700.0f); 
-	tone1 = snare_Tone1Lowpass.tick(&snare_Tone1Lowpass, tone1) * snare_Tone1EnvGain.tick(&snare_Tone1EnvGain);
+#if DO_SNARE
+	float tone1Freq= (75.0f + (ADC_values[ControlParameterBR] * INV_TWO_TO_12) * 75.0f);
+	setTone1Freq(snare, tone1Freq);
+	setTone1Decay(snare, 50.0f + (ADC_values[ControlParameterMR] * INV_TWO_TO_12) * 700.0f);
+
+	float tone2Freq= (150.0f + (ADC_values[ControlParameterBL] * INV_TWO_TO_12) * 150.0f);
+	setTone2Freq(snare, tone2Freq);
+	setTone2Decay(snare, 30.0f + (ADC_values[ControlParameterMR] * INV_TWO_TO_12) * 500.0f); 
+
+	setNoiseDecay(snare, 5.0f + (ADC_values[ControlParameterTL] * INV_TWO_TO_12) * 300.0f);
 	
-	snare_Tone2Osc.freq(&snare_Tone2Osc, (150.0f + (ADC_values[ControlParameterBL] * INV_TWO_TO_12) * 150.0f) + (100.0f * snare_Tone2EnvOsc.tick(&snare_Tone2EnvOsc)));
-	float tone2 = snare_Tone2Osc.tick(&snare_Tone2Osc);
-	snare_Tone2Lowpass.setFreq(&snare_Tone2Lowpass, 2000 + (500 * snare_Tone2EnvFilter.tick(&snare_Tone2EnvFilter)));
-	snare_Tone2EnvGain.setDecay(&snare_Tone2EnvGain, 30.0f + (ADC_values[ControlParameterMR] * INV_TWO_TO_12) * 500.0f); 
-	tone2 = snare_Tone2Lowpass.tick(&snare_Tone2Lowpass, tone2) * snare_Tone2EnvGain.tick(&snare_Tone2EnvGain);
+	sample = tick0(snare);
+#endif
 	
-	float noise = snare_NoiseOsc.tick(&snare_NoiseOsc);
-	snare_NoiseLowpass.setFreq(&snare_NoiseLowpass, 3500 +(500 * snare_NoiseEnvFilter.tick(&snare_NoiseEnvFilter)));
-	snare_NoiseEnvGain.setDecay(&snare_NoiseEnvGain, 5.0f + (ADC_values[ControlParameterTL] * INV_TWO_TO_12) * 300.0f);
-	noise = snare_NoiseLowpass.tick(&snare_NoiseLowpass, noise) * snare_NoiseEnvGain.tick(&snare_NoiseEnvGain);
+#if DO_HIHAT
+	//4096 - (myTouchpad[1] * 16)
+	setHihatDecay(hihat, 30.0f + 970.0f * ((myTouchpad[1] * 16) * INV_TWO_TO_12));
+	setHihatHighpassFreq(hihat, 1500.0f + 13500.0f * (myTouchpad[0] * 16) * INV_TWO_TO_12);
+	sample = tick0(hihat);
+#endif
 	
-	sample = tone1 * snare_Tone1Gain + tone2 * snare_Tone2Gain + noise * snare_NoiseGain;
 	// use these for dive?
 	//;
 	//snare_Tone2EnvOsc.tick(&snare_Tone2EnvOsc);
@@ -566,8 +506,7 @@ float audio808Process(float audioIn) {
 	//sample = FastTanh2Like1Term(sample);
 	//clip(-1.0f, sample, 1.0f);
 	//sample = shaper1[(uint16_t)((sample+1.0f)*0.5f * TWO_TO_16_MINUS_ONE)];
-  sample = highpass1.tick(&highpass1, sample);
-	
+  sample = tick1(highpass1, sample);
 	return sample;
 	
 }
@@ -580,16 +519,20 @@ float audioProcess(float audioIn) {
 	// alternative to custom f_abs is fabs in the math.h library?
 	float absAudioIn = f_abs(audioIn);
 	if (absAudioIn < 0.0001f) {
-		rampInputGain.setDest(&rampInputGain, 0.0f);
+		setRampDest(rampInputGain,0.0f);
+		//rampInputGain.setDest(&rampInputGain, 0.0f);
 	} 
 	if (absAudioIn > 0.00015f) {
-		rampInputGain.setDest(&rampInputGain, 1.0f);
+		setRampDest(rampInputGain, 1.0f);
+		//rampInputGain.setDest(&rampInputGain, 1.0f);
 	}
-	float inputGain = rampInputGain.tick(&rampInputGain);
+	float inputGain = tick0(rampInputGain);
 	audioIn = inputGain * audioIn;
+
+	
 	
 	// TRIGGER STUFF
-	peakEnvDive = envFollowTrigOut.tick(&envFollowTrigOut,audioIn);
+	peakEnvDive = tick1(envFollowTrigOut,audioIn);
 
 	if (!trigState) {
 		
@@ -599,7 +542,7 @@ float audioProcess(float audioIn) {
 			sampSinceTrig = 0;
 			setTrigOut(1);
 
-			envDive.on(&envDive,1.0f);
+			envOn(envDive,1.0f);
 		} 
 	} else {
 		
@@ -616,42 +559,46 @@ float audioProcess(float audioIn) {
 	// UPDATE NOISE FILTER Q and FREQ
 	float Q = 10.0f * (ADC_values[ControlParameterNoiseWidth] * INV_TWO_TO_12) + 0.05f;
 	noiseFilterGain = 0.1f*(1.0f - (Q/10.0f))+0.025f;
-	svf1.setQ(&svf1, Q);
-	svf1.setFreq(&svf1, ADC_values[ControlParameterNoiseCutoff]); 
+	setQ(svf1, Q);
+	setFreqFromKnob(svf1, ADC_values[ControlParameterNoiseCutoff]); 
 	
 	// SET NOISE DECAY COEFF
 #if USE_TOP_RIGHT_FOR_NOISE_DECAY
-	envFollowNoise.decayCoeff(&envFollowNoise,adc1[ADC_values[ControlParameterNoiseDecay]]);
+	setDecayCoeff(envFollowNoise,adc1[ADC_values[ControlParameterNoiseDecay]]);
 #else
-	envFollowNoise.decayCoeff(&envFollowNoise,adc1[ADC_values[ControlParameterDive]]);
+	setDecayCoeff(envFollowNoise,adc1[ADC_values[ControlParameterDive]]);
 #endif
 	
 	// SET SINE DECAY COEFF
-  envFollowSine.decayCoeff(&envFollowSine,adc1[ADC_values[ControlParameterSineDecay]]);
+  setDecayCoeff(envFollowSine,adc1[ADC_values[ControlParameterSineDecay]]);
 
 	// UPDATE FEEDBACK 
 	newFeedback = interpolateFeedback(ADC_values[ControlParameterFeedback]);
-	rampFeedback.setDest(&rampFeedback,newFeedback);
-	smoothedParams[SmoothedParameterFeedback] = rampFeedback.tick(&rampFeedback);
+	setRampDest(rampFeedback,newFeedback);
+	smoothedParams[SmoothedParameterFeedback] = tick0(rampFeedback);
 	
 	// UPDATE SINE FREQ
-	sin1.freq(&sin1, rampSineFreq.tick(&rampSineFreq) + envDive.tick(&envDive) * ((ADC_values[ControlParameterBL] * INV_TWO_TO_12) * 100.0f) + (FM_in * 1000.0f));
+	float newFreq = tick0(rampSineFreq) + tick0(envDive) * ((ADC_values[ControlParameterBL] * INV_TWO_TO_12) * 100.0f) + (FM_in * 1000.0f);
+	setFreq(sin1,newFreq);
+	//sin1.freq(&sin1, newFreq);
 	
 	// UPDATE DELAY PERIOD
-	smoothedParams[SmoothedParameterDelay] = rampDelayFreq.tick(&rampDelayFreq);
+	smoothedParams[SmoothedParameterDelay] = tick0(rampDelayFreq);
 	//delayfreq = smoothedParams[SmoothedParameterDelay] + (1.0f/(((FM_in + 1.0f) * 0.5f) * 1000.0f)); //trying FM delay period -- need to work on this more, it's a number of samples in the array, this is period in seconds, I think
-	delay1.setDelay(&delay1, smoothedParams[SmoothedParameterDelay]);
+	setDelay(delay1, smoothedParams[SmoothedParameterDelay]);
 	
 	// MIX
 	float sineEnv,noiseEnv;
-	sample = 0.8f * audioIn;
+	
+	//sample = 0.8f * audioIn; // testing removing the audio input just for recording session (since we'll have it in a separate track from the direct contact mic output)
+	sample = 0.0f * audioIn;
 	if (ADC_values[ControlParameterFeedback] > 3) {
 		sample += (ksGain * ksTick(audioIn));
 	}
 	if (ADC_values[ControlParameterSineDecay] > 3) {
 
-		sineEnv = envFollowSine.tick(&envFollowSine,audioIn); 
-		sample += (sineGain * sin1.tick(&sin1) * sineEnv);
+		sineEnv = tick1(envFollowSine,audioIn); 
+		sample += (sineGain * tick0(sin1) * sineEnv);
 		
 	}
 	sample *= .7f;
@@ -659,14 +606,14 @@ float audioProcess(float audioIn) {
 #if USE_TOP_RIGHT_FOR_NOISE_DECAY
 	if (ADC_values[ControlParameterNoiseDecay] > 5) {
 
-		noiseEnv = envFollowNoise.tick(&envFollowNoise,audioIn); 
-		sample += noiseGain * (noiseFilterGain * svf1.tick(&svf1, noise1.tick(&noise1)) * envFollowNoise.tick(&envFollowNoise,audioIn));
+		noiseEnv = tick1(envFollowNoise,audioIn); 
+		sample += noiseGain * (noiseFilterGain * tick1(svf1, tick0(noise1)) * tick1(envFollowNoise,audioIn));
 	}
 #else 
 	if (ADC_values[ControlParameterDive] > 5) {
 
-		noiseEnv = envFollowNoise.tick(&envFollowNoise,audioIn); 
-		sample += noiseGain * (noiseFilterGain * svf1.tick(&svf1, noise1.tick(&noise1)) * envFollowNoise.tick(&envFollowNoise,audioIn));
+		noiseEnv = tick1(envFollowNoise,audioIn); 
+		sample += noiseGain * (noiseFilterGain * tick1(svf1, tick0(noise1)) * tick1(envFollowNoise,audioIn));
 	}
 #endif
 	
@@ -676,8 +623,9 @@ float audioProcess(float audioIn) {
 	sample = FastTanh2Like1Term(sample);
 	//clip(-1.0f, sample, 1.0f);
 	//sample = shaper1[(uint16_t)((sample+1.0f)*0.5f * TWO_TO_16_MINUS_ONE)];
-  sample = highpass1.tick(&highpass1, sample);
+  sample = tick1(highpass1, sample);
 
+#if 0
 	if (++newcount == 16) {
 		newcount = 0;
 		
@@ -697,10 +645,10 @@ float audioProcess(float audioIn) {
 	
 		DMA1_externalDACSend();
 	}
-
+#endif
 	// TRIGGER
 #if TRIG_OUT_OLD
-	float peakEnv = envFollowTrigOut.tick(&envFollowTrigOut,audioIn);
+	float peakEnv = tick1(envFollowTrigOut,audioIn);
 	if (sampSinceTrig > NUM_SAMPS_BETWEEN_TRIG) {
 		
 		if (peakEnv > 0.02f) {
@@ -717,15 +665,15 @@ float audioProcess(float audioIn) {
 	}
 #endif
 #if TRIG_OUT_NEW
-	float peakEnv = envFollowTrigOut.tick(&envFollowTrigOut,audioIn);
+	float peakEnv = tick1(envFollowTrigOut,audioIn);
 	if (sampSinceTrig > NUM_SAMPS_BETWEEN_TRIG) {
 		
 		if ((peakEnv > 0.1f) && !trigState) {
 			trigState = 1;
 			setTrigOut(1);
 			#if 0
-				env808SnareAmplitude.on(&env808Snare, 1.0f);
-			  env808SnareFilter.on(&env808Snare, 1.0f);
+				envOn(env808Snare, 1.0f);
+			  envOn(env808Snare, 1.0f);
 			#endif 
 				sampSinceTrig = 0;
 		} 
@@ -740,7 +688,6 @@ float audioProcess(float audioIn) {
 	}
 #endif	
 	
-	//sample = 0.0f;
 	return sample;
 }
 
@@ -785,12 +732,12 @@ float ksTick(float noise_in)
 		temp_sample = noise_in + (feedbacksamp * smoothedParams[SmoothedParameterFeedback]);
 		
 		//feedbacksamp = delayTick(temp_sample);
-		feedbacksamp = delay1.tick(&delay1, temp_sample);
+		feedbacksamp = tick1(delay1, temp_sample);
 				
 	  //simple one-zero lowpass filter (moving average)
 		m_output0 = 0.5f * m_input1 + 0.5f * feedbacksamp;
 		m_input1 = feedbacksamp;
-		feedbacksamp = clip(-1.0f,highpass2.tick(&highpass2,m_output0),1.0f);
+		feedbacksamp = clip(-1.0f,tick1(highpass2, m_output0),1.0f);
 		float absFeedbackSamp;
 		if (feedbacksamp < 0.0f)
 		{
@@ -801,12 +748,12 @@ float ksTick(float noise_in)
 			absFeedbackSamp = feedbacksamp;
 		}
 		if (absFeedbackSamp < 0.001f) {
-			rampKSGain.setDest(&rampKSGain, 0.0f);
+			setRampDest(rampKSGain, 0.0f);
 		} 
 		if (absFeedbackSamp > 0.0015f) {
-			rampKSGain.setDest(&rampKSGain, 1.0f);
+			setRampDest(rampKSGain, 1.0f);
 		}
-		gain = rampKSGain.tick(&rampKSGain);
+		gain = tick0(rampKSGain);
 		out = gain * shaper1[(uint16_t)(((feedbacksamp + 1.0f) * 0.5f) * (TWO_TO_16_MINUS_ONE))];
 		return out;
 }
@@ -1144,26 +1091,6 @@ void HAL_SPI_TxRxHalfCpltCallback(SPI_HandleTypeDef *hspi)
 	}
 	*/
 }
-#if 0
-void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
-	if (hspi == &hspi2) {
-		
-		if (!whichSPI2) {
-			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET); // CAT4016 Latch pin goes high to latch data
-			ADC_Tx_Ready = 1;
-			whichSPI2 = 1;
-		} else {
-			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET); // ADC CS pin goes high
-			XY_Tx_Ready = 1;
-			whichSPI2 = 0;
-		}
-		
-		//readExternalADC();
-	}
-}
-#endif
-
-
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 {
 	

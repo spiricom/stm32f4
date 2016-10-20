@@ -1,9 +1,29 @@
+#ifndef AUDIOUNITS_H
+#define AUDIOUNITS_H
+
 #include "stdint.h"
 
+#define tick0(THIS)    												THIS.tick(&THIS)
+#define tick1(THIS,IN)    										THIS.tick(&THIS,IN)
 
+#define envOn(THIS,VEL)												THIS.on(&THIS,VEL)
+#define setEnvelopeAttack(THIS, ATTACK)   		THIS.setAttack(&THIS, ATTACK)
+#define setEnvelopeDecay(THIS,DECAY)					THIS.setDecay(&THIS,DECAY)
+
+#define setRampDest(THIS,DEST)    						THIS.setDest(&THIS,DEST)
+
+#define setFreq(THIS,FREQ)    								THIS.setFreq(&THIS,FREQ)
+#define setFreqFromKnob(THIS,FREQ)    				THIS.setFreqFromKnob(&THIS,FREQ)
+
+#define setQ(THIS,Q)													THIS.setQ(&THIS,Q)
+
+#define setDecayCoeff(THIS,COEFF)							THIS.decayCoeff(&THIS,COEFF)
+
+#define setDelay(THIS,DELAY)									THIS.setDelay(&THIS,DELAY)
 
 #define VERY_SMALL_FLOAT 1.0e-38f
 #define DELAY_BUFFER_SIZE 8192//16384
+
 
 typedef struct _tEnvelope {
 	
@@ -74,7 +94,7 @@ typedef struct _tSVF {
 	float ic1eq,ic2eq;
 	float g,k,a1,a2,a3; 
 	float(*tick)(struct _tSVF *self, float v0);
-	int(*setFreq)(struct _tSVF *self, uint16_t cutoffKnob);
+	int(*setFreqFromKnob)(struct _tSVF *self, uint16_t cutoffKnob);
 	int(*setQ)(struct _tSVF *self, float Q);
 } tSVF;
 
@@ -88,7 +108,7 @@ typedef struct _tSVFEfficient {
 	float ic1eq,ic2eq;
 	float g,k,a1,a2,a3; 
 	float(*tick)(struct _tSVF *self, float v0);
-	int(*setFreq)(struct _tSVF *self, uint16_t cutoffKnob);
+	int(*setFreqFromKnob)(struct _tSVF *self, uint16_t cutoffKnob);
 	int(*setQ)(struct _tSVF *self, float Q);
 } tSVFEfficient;
 
@@ -110,7 +130,7 @@ typedef struct _tPhasor {
 	float phase; 
 	float inc;
 	float inv_sr; 
-	int(*freq)(struct _tPhasor *self, float freq);
+	int(*setFreq)(struct _tPhasor *self, float freq);
 	float(*tick)(struct _tPhasor *self);
 } tPhasor; 
 
@@ -126,7 +146,7 @@ typedef struct _tCycle {
 	// Wavetable synthesis
 	const float *wt; //wavetable
 	int wtlen; //wavetable length
-	int(*freq)(struct _tCycle *self, float freq);
+	int(*setFreq)(struct _tCycle *self, float freq);
 	float(*tick)(struct _tCycle *self);
 } tCycle;
 
@@ -139,7 +159,7 @@ typedef struct _tSawtooth{
 	float inc;
 	float inv_sr;
 	
-	int(*freq)(struct _tSawtooth *self, float freq);
+	int(*setFreq)(struct _tSawtooth *self, float freq);
 	float(*tick)(struct _tSawtooth *self);
 } tSawtooth;
 
@@ -152,7 +172,7 @@ typedef struct _tTriangle{
 	float inc;
 	float inv_sr;
 	
-	int(*freq)(struct _tTriangle *self, float freq);
+	int(*setFreq)(struct _tTriangle *self, float freq);
 	float(*tick)(struct _tTriangle *self);
 } tTriangle;
 
@@ -167,7 +187,7 @@ typedef struct _tPulse{
 	
 	float pw; 
 	int(*pwidth)(struct _tPulse *self, float pwidth);
-	int(*freq)(struct _tPulse *self, float freq);
+	int(*setFreq)(struct _tPulse *self, float freq);
 	float(*tick)(struct _tPulse *self);
 } tPulse;
 
@@ -192,9 +212,11 @@ typedef struct _tHighpass {
 	float inv_sr;
 	float xs, ys, R;
 	float cutoff;
-	int(*freq)(struct _tHighpass *self, float x);
+	int(*setFreq)(struct _tHighpass *self, float x);
 	float(*tick)(struct _tHighpass *self, float x);
 } tHighpass;
 
 int tHighpassInit(tHighpass *hp, float sr, float freq);
+
+#endif
 

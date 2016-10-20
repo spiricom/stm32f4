@@ -22,26 +22,28 @@ Dialog DLL:      TCM.DLL V1.14.9.0
  
 <h2>Project:</h2>
 C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\MDK-ARM\drumbox_405_firstIC.uvprojx
-Project File Date:  10/13/2016
+Project File Date:  10/20/2016
 
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 2 (build 183)', folder: 'C:\Keil_v5\ARM\ARMCC\Bin'
 Build Project 'drumbox_405_firstIC' - Target 'drumbox_405 Configuration'
 compiling waveplayer.c...
-C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(271): warning:  #177-D: variable "dummy1" was declared but never referenced
+C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(251): warning:  #177-D: variable "dummy1" was declared but never referenced
   	int16_t dummy1 = 0;
-C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(272): warning:  #177-D: variable "dummy2" was declared but never referenced
+C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(252): warning:  #177-D: variable "dummy2" was declared but never referenced
   	uint16_t dummy2 = 0;
-C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(674): warning:  #1035-D: single-precision operand implicitly converted to double-precision
+C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(621): warning:  #1035-D: single-precision operand implicitly converted to double-precision
   	sample *= .5;
-C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(74): warning:  #177-D: variable "spi1tx" was declared but never referenced
+C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(591): warning:  #550-D: variable "noiseEnv" was set but never used
+  	float sineEnv,noiseEnv;
+C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(75): warning:  #177-D: variable "spi1tx" was declared but never referenced
   static HAL_DMA_StateTypeDef spi1tx;
-C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(75): warning:  #177-D: variable "spi1rx" was declared but never referenced
+C:\Documents\en.stm32cubef4\STM32Cube_FW_F4_V1.13.0\Projects\STM32F4-Discovery\Applications\Audio\drumbox_405_firstIC\Src\waveplayer.c(76): warning:  #177-D: variable "spi1rx" was declared but never referenced
   static HAL_DMA_StateTypeDef spi1rx;
-..\Src\waveplayer.c: 5 warnings, 0 errors
+..\Src\waveplayer.c: 6 warnings, 0 errors
 linking...
-Program Size: Code=37216 RO-data=975288 RW-data=568 ZI-data=73528  
-"drumbox_405 Configuration\drumbox_405 Configuration.axf" - 0 Error(s), 5 Warning(s).
+Program Size: Code=37760 RO-data=565688 RW-data=552 ZI-data=73888  
+"drumbox_405 Configuration\drumbox_405 Configuration.axf" - 0 Error(s), 6 Warning(s).
 
 <h2>Software Packages used:</h2>
 

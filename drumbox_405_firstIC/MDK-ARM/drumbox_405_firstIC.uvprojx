@@ -487,6 +487,11 @@
               <FileType>1</FileType>
               <FilePath>..\Src\wavetables.c</FilePath>
             </File>
+            <File>
+              <FileName>instruments.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Src\instruments.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

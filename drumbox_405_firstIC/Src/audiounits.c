@@ -1,9 +1,7 @@
 // Audio Units
-
 #include "audiounits.h"
 #include "wavetables.h"
 #include "math.h"
-
 
 #define TWO_TO_16 65536.f
 
@@ -138,7 +136,7 @@ int tEnvelopeInit(tEnvelope *env, float sr, float attack, float decay, int loop,
 		
 	uint16_t attackIndex = ((uint16_t)(attack * 8.0f))-1; 
 	uint16_t decayIndex = ((uint16_t)(decay * 8.0f))-1;
-	if (attackIndex < 0)
+	if (attack < 0)
 		attackIndex = 0;
 	if (decayIndex < 0)
 		decayIndex = 0;
@@ -175,7 +173,7 @@ int tPhasorInit(tPhasor *p, float sr) {
 	p->phase = 0.0f;
 	p->inc = 0.0f;
 	p->inv_sr = 1.0f/sr;
-	p->freq = &phasorFreq;
+	p->setFreq = &phasorFreq;
 	p->tick = &phasortick;
 	
 	return 0; 
@@ -256,7 +254,7 @@ int tSVFInit(tSVF *svf, float sr, SVFType type, uint16_t cutoffKnob, float Q) {
 	
 	svf->tick = &tSVFTick;
 	svf->setQ = &tSVFSetQ;
-	svf->setFreq = &tSVFSetFreq; 
+	svf->setFreqFromKnob = &tSVFSetFreq; 
 	
 	return 0;
 }
@@ -338,7 +336,7 @@ int tSVFEfficientInit(tSVFEfficient *svf, float sr, SVFType type, uint16_t cutof
 	
 	svf->tick = &tSVFEfficientTick;
 	svf->setQ = &tSVFEfficientSetQ;
-	svf->setFreq = &tSVFEfficientSetFreq; 
+	svf->setFreqFromKnob = &tSVFEfficientSetFreq; 
 	
 	return 0;
 }
@@ -465,6 +463,7 @@ int tHighpassInit(tHighpass *hp, float sr, float freq) {
 	hp->R = (1.0f-((freq * 2.0f * 3.14f)*hp->inv_sr));
 	hp->ys = 0.0f;
 	hp->xs = 0.0f;
+	hp->setFreq = &tHighpassFreq;
 	hp->tick = &tHighpassTick;
 	
 	return 0;
@@ -502,7 +501,7 @@ int tCycleInit(tCycle *c, float sr, const float *table, int len) {
 	
 	c->wt = table; 
 	c->wtlen = len;
-	c->freq = &tCycleFreq;
+	c->setFreq = &tCycleFreq;
 	c->tick = &tCycleTick;
 	
 	return 0; 
@@ -531,7 +530,7 @@ int tSawtoothInit(tSawtooth *s, float sr) {
 	s->phase = 0.0f;
 	s->inv_sr = 1.0f/sr;
 	
-	s->freq = &tSawtoothFreq;
+	s->setFreq = &tSawtoothFreq;
 	s->tick = &tSawtoothTick;
 	
 	return 0; 
@@ -563,7 +562,7 @@ int tTriangleInit(tTriangle *t, float sr) {
 	t->phase = 0.0f;
 	t->inv_sr = 1.0f/sr;
 	
-	t->freq = &tTriangleFreq;
+	t->setFreq = &tTriangleFreq;
 	t->tick = &tTriangleTick;
 	
 	return 0; 
@@ -605,7 +604,7 @@ int tPulseInit(tPulse *pl, float sr, float pwidth) {
 	
 	pl->pw = pwidth; 
 	pl->pwidth = &tPulseWidth;
-	pl->freq = &tPulseFreq;
+	pl->setFreq = &tPulseFreq;
 	pl->tick = &tPulseTick;
 	return 0; 
 }
@@ -636,4 +635,6 @@ int tNoiseInit(tNoise *n, float sr, float (*randomNumberGenerator)(), NoiseType 
 	}
 	return 0;
 }
+
+
 
