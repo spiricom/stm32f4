@@ -233,7 +233,7 @@ int tSVFSetFreq(tSVF *svf, uint16_t cutoffKnob) {
 
 int tSVFSetQ(tSVF *svf, float Q) {
 	
-	svf->k = 1.0f/Q;
+	svf->k = 1.0f/clipAU(0.01f,Q,10.0f);
 	svf->a1 = 1.0f/(1.0f + svf->g * (svf->g + svf->k));
 	svf->a2 = svf->g * svf->a1;
 	svf->a3 = svf->g * svf->a2;
@@ -251,7 +251,7 @@ int tSVFInit(tSVF *svf, float sr, SVFType type, uint16_t cutoffKnob, float Q) {
 	
 	float a1,a2,a3,g,k;
 	g = filtertan[cutoffKnob]; 
-	k = 1.0f/Q;
+	k = 1.0f/clipAU(0.01f,Q,10.0f);
 	a1 = 1.0f/(1.0f+g*(g+k));
 	a2 = g*a1;
 	a3 = g*a2;

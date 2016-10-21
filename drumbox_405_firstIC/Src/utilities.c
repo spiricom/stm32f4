@@ -2,6 +2,41 @@
 
 #define COMPUTE_INC() r->inc = ((r->dest-r->curr)/r->time * r->inv_sr_ms)*((float)r->samples_per_tick)
  
+
+/* Phasor */
+static int tMetroRate(tMetro *metro, float rate) {
+	
+	
+	metro->peak = (rate * 0.001f * metro->sr);
+	
+	return 0;
+}
+
+static int tMetroTick(tMetro *metro) {
+	
+	metro->phase++;
+	
+	if (metro->phase >= metro->peak) {
+		metro->phase = 0;
+		return 1;
+	} 
+
+	return 0;
+}
+
+int tMetroInit(tMetro *metro, float sr, float rate) {
+
+	metro->phase = 0.0f;
+	metro->peak = (rate * 0.001f * sr);
+	metro->sr = sr;
+	metro->setRate = &tMetroRate;
+	metro->tick = &tMetroTick;
+	
+	return 0; 
+}
+
+
+
 int tRampSetTime(tRamp *r, float time) {
 	r->time = time;
 	COMPUTE_INC();

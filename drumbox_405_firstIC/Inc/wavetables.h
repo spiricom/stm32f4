@@ -15,6 +15,7 @@
 #define FB_TABLE_SIZE 4096
 #define FILTERTAN_TABLE_SIZE 4096
 
+
 extern const float FB1[FB_TABLE_SIZE];
 extern const float FB2[FB_TABLE_SIZE];
 extern const float FB3[FB_TABLE_SIZE];

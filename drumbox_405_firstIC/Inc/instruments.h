@@ -7,6 +7,7 @@
 #define setCowbellOscMix(THIS,MIX)									THIS.setOscMix(&THIS,MIX)
 #define setCowbellFreq(THIS,FREQ)										THIS.setOscFreq(&THIS,FREQ)
 #define setCowbellDecay(THIS,DECAY)									THIS.setDecay(&THIS,DECAY)
+#define setCowbellHighpassFreq(THIS,FREQ)						THIS.setHighpassFreq(&THIS,FREQ)
 
 #define setHihatDecay(THIS,DECAY)										THIS.setDecay(&THIS,DECAY)
 #define setHihatHighpassFreq(THIS,FREQ)							THIS.setHighpassFreq(&THIS,FREQ)
@@ -29,9 +30,11 @@ typedef struct _t808Cowbell {
 	tNoise stick;
 	tSVF bandpassOsc, bandpassStick;
 	tEnvelope envGain, envStick, envFilter; 
+	tHighpass highpass;
 	float oscMix;
 	float filterCutoff;
 	
+	int(*setHighpassFreq)(struct _t808Cowbell *self, float freq);
 	int(*setOscBandpassFreq)(struct _t808Cowbell *self, float freq);
 	int(*setOscMix)(struct _t808Cowbell *self, float oscMix);
 	int(*setOscFreq)(struct _t808Cowbell *self, float freq);

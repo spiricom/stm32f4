@@ -3,6 +3,8 @@
 
 #include "stdint.h"
 
+#define setRate(THIS,RATE)			THIS.setRate(&THIS,RATE)
+
 typedef enum ControlParameterType {
 	ControlParameterFeedback = 0,
 	ControlParameterDive,
@@ -30,6 +32,16 @@ typedef enum SmoothedParameterType {
 	SmoothedParameterNil,
 } SmoothedParameterType;
 
+typedef struct _tMetro {
+	
+	uint32_t peak,phase; 
+	float sr; 
+	int(*setRate)(struct _tMetro *self, float rate);
+	int(*tick)(struct _tMetro *self);
+	
+} tMetro;
+
+int tMetroInit(tMetro *m, float sr, float rate);
 
 /* Ramp */
 typedef struct _tRamp {

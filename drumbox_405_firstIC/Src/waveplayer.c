@@ -96,6 +96,7 @@ uint8_t externalDACOutputBuffer[NUM_BYTES_TO_SEND];
 uint8_t externalDACOutputBufferTX[NUM_BYTES_TO_SEND];
 
 // Instruments
+tMetro metro;
 t808Snare snare; 
 t808Hihat hihat;
 t808Cowbell cowbell;
@@ -255,8 +256,8 @@ float clipf(float min, float val, float max) {
 }
 
 #define DO_SNARE 0
-#define DO_HIHAT 0
-#define DO_COWBELL 1
+#define DO_HIHAT 1
+#define DO_COWBELL 0
 
 void audioInit(void)
 { 
@@ -272,6 +273,8 @@ void audioInit(void)
 	}
 
 	// Initialize audio units.
+	tMetroInit(&metro,SAMPLE_RATE, 1000.0f);
+	
 	t808SnareInit(&snare, SAMPLE_RATE, &randomNumber, exp_decay, attack_decay_inc);
 	t808HihatInit(&hihat, SAMPLE_RATE, &randomNumber, exp_decay, attack_decay_inc);
 	t808CowbellInit(&cowbell, SAMPLE_RATE, &randomNumber, exp_decay, attack_decay_inc);
@@ -432,6 +435,10 @@ float vel = 0;
 float vels[200]; 
 int i = 0;
 
+float cowbelldecay = 0.0f;
+
+BOOL didMetro=FALSE;
+
 float audio808Process(float audioIn) {
 	
 	float sample;
@@ -493,6 +500,19 @@ float audio808Process(float audioIn) {
 		
 	sampSinceTrig++;
 	sampSinceVelChange++;
+	
+	setRate(metro, 5 + 2000 * (ADC_values[ControlParameterTR] * INV_TWO_TO_12));
+	
+	if (tick0(metro) >= 0.5f) {
+		if (!didMetro) {
+			didMetro = TRUE;
+			envOn(hihat,vel);
+		}
+	} else {
+		if (didMetro) {
+			didMetro = FALSE;
+		}
+	}
 
 #if DO_SNARE
 	setSnareTone1Freq(snare, (60.0f + ((myTouchpad[1] * 16) * INV_TWO_TO_12) * 160.0f));
@@ -512,8 +532,8 @@ float audio808Process(float audioIn) {
 #endif
 	
 #if DO_HIHAT
-	setHihatDecay(hihat, 10.0f + 970.0f * ((myTouchpad[1] * 16) * INV_TWO_TO_12));
-	setHihatFreq(hihat, 10.0f + 600.0f * (ADC_values[ControlParameterBR] * INV_TWO_TO_12));
+	setHihatDecay(hihat, 5.0f + 970.0f * ((float)(myTouchpad[1] * 16) * INV_TWO_TO_12));
+	setHihatFreq(hihat, 30.0f + 600.0f * (ADC_values[ControlParameterBR] * INV_TWO_TO_12));
 	setHihatOscBandpassFreq(hihat, 2000 + 2000 * (ADC_values[ControlParameterBL] * INV_TWO_TO_12));
 	setHihatHighpassFreq(hihat, 1000.0f + 14000.0f * (myTouchpad[0] * 16) * INV_TWO_TO_12);
 	setHihatOscNoiseMix(hihat, (ADC_values[ControlParameterML] * INV_TWO_TO_12));
@@ -524,11 +544,13 @@ float audio808Process(float audioIn) {
 #if DO_COWBELL
 	
 	
-	setCowbellDecay(cowbell, 20.0f + 680.0f * ((myTouchpad[1] * 16) * INV_TWO_TO_12));
-	setCowbellBandpassFreqFromKnob(cowbell, 500 + (2500 * (myTouchpad[0] * 16) * INV_TWO_TO_12));
-	setCowbellFreq(cowbell, (200.0f + 1000.0f * (ADC_values[ControlParameterBL] * INV_TWO_TO_12)));
+	cowbelldecay = 20.0f + 580.0f * ((float)(myTouchpad[1] * 16) * INV_TWO_TO_12);
+	setCowbellDecay(cowbell, cowbelldecay);
+	setCowbellHighpassFreq(cowbell, 20.0f + (1500.0f * (float)(myTouchpad[0] * 16) * INV_TWO_TO_12));
+	setCowbellBandpassFreqFromKnob(cowbell, 500 + (2500.0f * (float) ADC_values[ControlParameterBR] * INV_TWO_TO_12));
+	setCowbellFreq(cowbell, (200.0f + 800.0f * ((float)ADC_values[ControlParameterBL] * INV_TWO_TO_12)));
 	
-	setCowbellOscMix(cowbell, (ADC_values[ControlParameterBR] * INV_TWO_TO_12));
+	setCowbellOscMix(cowbell, ((float)ADC_values[ControlParameterML] * INV_TWO_TO_12));
 	
 	
 	sample = tick0(cowbell);
