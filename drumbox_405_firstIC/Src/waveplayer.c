@@ -98,6 +98,7 @@ uint8_t externalDACOutputBufferTX[NUM_BYTES_TO_SEND];
 // Instruments
 t808Snare snare; 
 t808Hihat hihat;
+t808Cowbell cowbell;
 
 // Sine 
 tCycle sin1; 
@@ -253,8 +254,9 @@ float clipf(float min, float val, float max) {
 	}
 }
 
-#define DO_SNARE 1
+#define DO_SNARE 0
 #define DO_HIHAT 0
+#define DO_COWBELL 1
 
 void audioInit(void)
 { 
@@ -272,6 +274,7 @@ void audioInit(void)
 	// Initialize audio units.
 	t808SnareInit(&snare, SAMPLE_RATE, &randomNumber, exp_decay, attack_decay_inc);
 	t808HihatInit(&hihat, SAMPLE_RATE, &randomNumber, exp_decay, attack_decay_inc);
+	t808CowbellInit(&cowbell, SAMPLE_RATE, &randomNumber, exp_decay, attack_decay_inc);
 
 	tRampInit(&rampInputGain, SAMPLE_RATE, 5.0f, 1);
 	tHighpassInit(&highpass1, SAMPLE_RATE, 20.0f);
@@ -393,7 +396,7 @@ void audioTick(uint16_t buffer_offset)
 	for (i = 0; i < (HALF_BUFFER_SIZE); i++)
 	{
 		if ((i & 1) == 0) {
-			#if (DO_SNARE || DO_HIHAT)
+			#if (DO_SNARE || DO_HIHAT || DO_COWBELL)
 				current_sample = (int16_t)(audio808Process((float) (audioInBuffer[buffer_offset + i] * INV_TWO_TO_15)) * TWO_TO_15);
 			#else 
 			  current_sample = (int16_t)(audioProcess((float) (audioInBuffer[buffer_offset + i] * INV_TWO_TO_15)) * TWO_TO_15);
@@ -474,6 +477,9 @@ float audio808Process(float audioIn) {
 			envOn(hihat,vel);
 #endif
 			
+#if DO_COWBELL
+			envOn(cowbell,vel);
+#endif
 		} 
 	} else {
 		
@@ -513,6 +519,19 @@ float audio808Process(float audioIn) {
 	setHihatOscNoiseMix(hihat, (ADC_values[ControlParameterML] * INV_TWO_TO_12));
 	
 	sample = tick0(hihat);
+#endif
+
+#if DO_COWBELL
+	
+	
+	setCowbellDecay(cowbell, 20.0f + 680.0f * ((myTouchpad[1] * 16) * INV_TWO_TO_12));
+	setCowbellBandpassFreqFromKnob(cowbell, 500 + (2500 * (myTouchpad[0] * 16) * INV_TWO_TO_12));
+	setCowbellFreq(cowbell, (200.0f + 1000.0f * (ADC_values[ControlParameterBL] * INV_TWO_TO_12)));
+	
+	setCowbellOscMix(cowbell, (ADC_values[ControlParameterBR] * INV_TWO_TO_12));
+	
+	
+	sample = tick0(cowbell);
 #endif
 	
 	// use these for dive?

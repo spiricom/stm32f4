@@ -3,11 +3,16 @@
 
 #include "audiounits.h"
 
-#define setHihatDecay(THIS,DECAY)							THIS.setDecay(&THIS,DECAY)
-#define setHihatHighpassFreq(THIS,FREQ)				THIS.setHighpassFreq(&THIS,FREQ)
-#define setHihatFreq(THIS,FREQ)								THIS.setOscFreq(&THIS,FREQ)
-#define setHihatOscBandpassFreq(THIS,FREQ) 		THIS.setOscBandpassFreq(&THIS,FREQ)
-#define setHihatOscNoiseMix(THIS,FREQ)				THIS.setOscNoiseMix(&THIS,FREQ)
+#define setCowbellBandpassFreqFromKnob(THIS,FREQ)		THIS.setOscBandpassFreq(&THIS,FREQ)
+#define setCowbellOscMix(THIS,MIX)									THIS.setOscMix(&THIS,MIX)
+#define setCowbellFreq(THIS,FREQ)										THIS.setOscFreq(&THIS,FREQ)
+#define setCowbellDecay(THIS,DECAY)									THIS.setDecay(&THIS,DECAY)
+
+#define setHihatDecay(THIS,DECAY)										THIS.setDecay(&THIS,DECAY)
+#define setHihatHighpassFreq(THIS,FREQ)							THIS.setHighpassFreq(&THIS,FREQ)
+#define setHihatFreq(THIS,FREQ)											THIS.setOscFreq(&THIS,FREQ)
+#define setHihatOscBandpassFreq(THIS,FREQ) 					THIS.setOscBandpassFreq(&THIS,FREQ)
+#define setHihatOscNoiseMix(THIS,FREQ)							THIS.setOscNoiseMix(&THIS,FREQ)
 
 #define setSnareTone1Freq(THIS,FREQ)								THIS.setTone1Freq(&THIS,FREQ)
 #define setSnareTone2Freq(THIS,FREQ)								THIS.setTone2Freq(&THIS,FREQ)
@@ -18,7 +23,26 @@
 #define setSnareNoiseFilterFreq(THIS,FREQ)					THIS.setNoiseFilterFreq(&THIS,FREQ)
 #define setSnareNoiseFilterQ(THIS,Q)								THIS.setNoiseFilterQ(&THIS,Q)
 
+typedef struct _t808Cowbell {
+	
+	tPulse p1,p2;
+	tNoise stick;
+	tSVF bandpassOsc, bandpassStick;
+	tEnvelope envGain, envStick, envFilter; 
+	float oscMix;
+	float filterCutoff;
+	
+	int(*setOscBandpassFreq)(struct _t808Cowbell *self, float freq);
+	int(*setOscMix)(struct _t808Cowbell *self, float oscMix);
+	int(*setOscFreq)(struct _t808Cowbell *self, float freq);
+	int(*setDecay)(struct _t808Cowbell *self, float decay);
+	
+	int(*on)(struct _t808Cowbell *self, float vel);
+	float(*tick)(struct _t808Cowbell *self);
+	
+} t808Cowbell;
 
+int t808CowbellInit(t808Cowbell *cowbell, float sr, float (*randomNumberGenerator)(),const float *exp_decay, const float *attack_decay_inc);
 
 typedef struct _t808Hihat {
 
@@ -42,7 +66,7 @@ typedef struct _t808Hihat {
 	
 } t808Hihat; 
 
-int t808HihatInit(t808Hihat *snare, float sr, float (*randomNumberGenerator)(),const float *exp_decay, const float *attack_decay_inc);
+int t808HihatInit(t808Hihat *hihat, float sr, float (*randomNumberGenerator)(),const float *exp_decay, const float *attack_decay_inc);
 
 typedef struct _t808Snare {
 

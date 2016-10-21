@@ -12,6 +12,92 @@ float clipI(float min, float val, float max) {
 	}
 }
 
+int t808CowbellOn(t808Cowbell *cowbell, float vel) {
+	
+	envOn(cowbell->envGain,vel);
+	envOn(cowbell->envStick,vel);
+	
+	return 0;
+}
+
+float t808CowbellTick(t808Cowbell *cowbell) {
+	
+	float sample = 0.0f;
+	
+	// Mix oscillators.
+	sample = (cowbell->oscMix * tick0(cowbell->p1)) + ((1.0f-cowbell->oscMix) * tick0(cowbell->p2));
+	
+	// Filter dive and filter.
+	setFreqFromKnob(cowbell->bandpassOsc, cowbell->filterCutoff + 1000.0f*tick0(cowbell->envFilter));
+	sample = tick1(cowbell->bandpassOsc,sample);
+	
+	// Mix noise.
+	sample = 0.9f * tick0(cowbell->envGain) * sample + (0.1f * tick0(cowbell->envStick) * tick1(cowbell->bandpassStick, tick0(cowbell->stick)));
+	
+	return sample;
+}
+
+static int t808CowbellSetDecay(t808Cowbell *cowbell, float decay) {
+	
+	setEnvelopeDecay(cowbell->envGain,decay);
+	setEnvelopeDecay(cowbell->envFilter,decay);
+	
+	return 0;	
+}
+
+static int t808CowbellSetBandpassFreq(t808Cowbell *cowbell, float freq) {
+	
+	// fix SVF
+	cowbell->filterCutoff = freq;
+	
+	return 0;	
+}
+
+static int t808CowbellSetFreq(t808Cowbell *cowbell, float freq) {
+	
+	setFreq(cowbell->p1,freq);
+	setFreq(cowbell->p2,1.48148f*freq);
+	
+	return 0;	
+}
+
+static int t808CowbellSetOscMix(t808Cowbell *cowbell, float oscMix) {
+	
+	cowbell->oscMix = oscMix;
+	
+	return 0;	
+}
+
+int t808CowbellInit(t808Cowbell *cowbell, float sr, float (*randomNumberGenerator)(),const float *exp_decay, const float *attack_decay_inc) {
+	
+	tPulseInit(&cowbell->p1,sr,0.5f);
+	tPulseInit(&cowbell->p2,sr,0.5f);
+	
+	setFreq(cowbell->p1, 540.0f);
+	setFreq(cowbell->p2, 1.48148f * 540.0f);
+	
+	cowbell->oscMix = 0.5f;
+	
+	tNoiseInit(&cowbell->stick, sr, randomNumberGenerator, NoiseTypeWhite);
+	
+	tSVFInit(&cowbell->bandpassOsc, sr, SVFTypeBandpass, 3000, 1.0f);
+	
+	tSVFInit(&cowbell->bandpassStick, sr, SVFTypeBandpass, 1800, 1.0f);
+	
+	tEnvelopeInit(&cowbell->envGain, sr, 5.0f, 100.0f, 0, exp_decay, attack_decay_inc);
+	tEnvelopeInit(&cowbell->envStick, sr, 5.0f, 5.0f, 0, exp_decay, attack_decay_inc);
+	tEnvelopeInit(&cowbell->envFilter, sr, 5.0, 100.0f, 0, exp_decay,attack_decay_inc);
+	
+	cowbell->tick = &t808CowbellTick;
+	cowbell->on = &t808CowbellOn;
+	cowbell->setOscFreq = &t808CowbellSetFreq;
+	cowbell->setOscMix = &t808CowbellSetOscMix;
+	cowbell->setDecay = &t808CowbellSetDecay;
+	cowbell->setOscBandpassFreq = &t808CowbellSetBandpassFreq;
+	
+	return 0;
+}
+	
 static int t808HihatOn(t808Hihat *hihat, float vel) {
 	
 	envOn(hihat->envGain, vel);
