@@ -51,6 +51,7 @@ typedef struct _t808Hihat {
 
 	// 6 Square waves
 	tPulse p1,p2,p3,p4,p5,p6;
+	//tPulse p[6];
 	tNoise n;
 	tSVF bandpassOsc,bandpassStick;
 	tEnvelope envGain,envStick;

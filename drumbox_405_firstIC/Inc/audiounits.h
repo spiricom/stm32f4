@@ -62,6 +62,7 @@ typedef struct _tADSR {
 	int(*setAttack)(struct _tEnvelope *self, float attack);
 	int(*setSustain)(struct _tEnvelope *self, float decay);
 	int(*setRelease)(struct _tEnvelope *self, float attack);
+
 } tADSR;
 
 int tADSRInit(tADSR *d, float attack, float decay, float sustain, float release); 

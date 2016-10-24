@@ -101,6 +101,8 @@ t808Snare snare;
 t808Hihat hihat;
 t808Cowbell cowbell;
 
+tTriangle tris[6]; 
+
 // Sine 
 tCycle sin1; 
 
@@ -182,6 +184,7 @@ typedef enum BOOL {
 	TRUE
 } BOOL;
 
+
 #define NUM_SAMPS_BETWEEN_TRIG_808 2000
 #define NUM_SAMPS_BETWEEN_TRIG 8192
 #define NUM_SAMPS_BETWEEN_VEL_CHANGE 3500
@@ -256,8 +259,8 @@ float clipf(float min, float val, float max) {
 }
 
 #define DO_SNARE 0
-#define DO_HIHAT 1
-#define DO_COWBELL 0
+#define DO_HIHAT 0
+#define DO_COWBELL 1
 
 void audioInit(void)
 { 
@@ -272,6 +275,12 @@ void audioInit(void)
 		fbdp *= 2.0f;
 	}
 
+	
+	for (int i =0; i< 6; i++) {
+		tTriangleInit(&tris[i],SAMPLE_RATE);
+		setFreq(tris[i], 60.0f * i);
+	}
+	
 	// Initialize audio units.
 	tMetroInit(&metro,SAMPLE_RATE, 1000.0f);
 	
@@ -486,6 +495,7 @@ float audio808Process(float audioIn) {
 			
 #if DO_COWBELL
 			envOn(cowbell,vel);
+			
 #endif
 		} 
 	} else {
@@ -554,6 +564,11 @@ float audio808Process(float audioIn) {
 	
 	
 	sample = tick0(cowbell);
+	sample = 0.f;
+	for (int i = 0; i < 6; i++) {
+		sample += 0.16f * tick0(tris[i]);
+	}
+	
 #endif
 	
 	// use these for dive?
